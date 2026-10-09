@@ -1,0 +1,95 @@
+
+# ==========================================
+# Mio Language - .gitignore
+# Platform: macOS
+# Language: Go
+# ==========================================
+
+# ------------------------------------------
+# 1. macOS
+# ------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ------------------------------------------
+# 2. Go build artifacts
+# ------------------------------------------
+/mio
+/mio.exe
+
+*.test
+*.out
+*.prof
+*.coverprofile
+coverage/
+coverage.txt
+coverage.html
+
+# ------------------------------------------
+# 3. Mio compiler artifacts
+# ------------------------------------------
+# Future Mio bytecode files
+*.miob
+
+# Compiler-generated output
+/build/
+/dist/
+
+# ------------------------------------------
+# 4. IDE / Editor
+# ------------------------------------------
+# GoLand / IntelliJ
+.idea/
+
+# VS Code local configuration
+.vscode/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ------------------------------------------
+# 5. Temporary files
+# ------------------------------------------
+*.tmp
+*.temp
+*.bak
+*.log
+
+/tmp/
+/temp/
+
+# ------------------------------------------
+# 6. Local environment
+# ------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------
+# 7. Debugging
+# ------------------------------------------
+debug
+debug.test
+__debug_bin
+__debug_bin.exe
+
+# ------------------------------------------
+# 8. Local development cache
+# ------------------------------------------
+.cache/
+
+# ------------------------------------------
+# 9. Keep source and specifications tracked
+# ------------------------------------------
+# *.go      Go source code
+# *.mio     Mio source code
+# go.mod    Go module definition
+# go.sum    Go dependency checksums
+# docs/     Language specifications
+# tests/    Conformance tests
