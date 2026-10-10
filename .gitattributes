@@ -1,0 +1,8 @@
+# Mio Language — GitHub Linguist configuration
+# Until Mio is registered in github-linguist, use JavaScript as the
+# closest available syntax-highlighting / language-statistics fallback.
+# Note: GitHub will display these files as JavaScript, not as Mio.
+*.mio linguist-language=JavaScript linguist-detectable
+
+# Compiled Mio bytecode (only applies if such files are committed).
+*.miob binary linguist-generated -linguist-detectable
