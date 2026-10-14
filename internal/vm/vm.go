@@ -83,7 +83,7 @@ func (v *VM) Run() error {
 
 		switch op {
 
-		// 将整数常量包装为 Value 并压栈
+		// 将带类型的常量压栈
 		case code.OpConstant:
 			index := operands[0]
 
@@ -95,12 +95,16 @@ func (v *VM) Run() error {
 				)
 			}
 
-			number := v.bytecode.Constants[index]
+			constant := v.bytecode.Constants[index]
+			if constant.Kind() == value.KindInvalid {
+				return fmt.Errorf("invalid constant at index %d at %d", index, ip)
+			}
 
-			v.stack = append(
-				v.stack,
-				value.NewInt(number),
-			)
+			v.stack = append(v.stack, constant)
+
+		// mu 空值入栈
+		case code.OpNil:
+			v.stack = append(v.stack, value.NewNil())
 
 		// 整数二元算术运算
 		case code.OpAdd,

@@ -95,7 +95,7 @@ func TestVMComparisonErrors(t *testing.T) {
 					byte(code.OpTrue),
 					byte(code.OpEqual),
 				},
-				Constants: []int64{10},
+				Constants: []value.Value{value.NewInt(10)},
 			},
 			wantErr: "requires matching types",
 		},
@@ -136,7 +136,7 @@ func TestVMComparisonErrors(t *testing.T) {
 func TestVMStringComparison(t *testing.T) {
 	machine := New(nil)
 
-	// 当前 Compiler 尚未支持字符串常量编译
+	// 直接验证比较指令的栈行为
 	machine.stack = []value.Value{
 		value.NewString("Mio"),
 		value.NewString("Mio"),

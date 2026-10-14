@@ -11,6 +11,7 @@ import (
 	"Mio/internal/lexer"
 	"Mio/internal/parser"
 	"Mio/internal/token"
+	"Mio/internal/value"
 )
 
 // 测试整数表达式的字节码编译
@@ -18,13 +19,13 @@ func TestCompileIntegerExpressions(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		constants    []int64
+		constants    []value.Value
 		instructions code.Instructions
 	}{
 		{
 			name:      "整数加法",
 			input:     "1 + 2;",
-			constants: []int64{1, 2},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -35,7 +36,7 @@ func TestCompileIntegerExpressions(t *testing.T) {
 		{
 			name:      "嵌套加法",
 			input:     "1 + (2 + 3);",
-			constants: []int64{1, 2, 3},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2), value.NewInt(3)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -48,7 +49,7 @@ func TestCompileIntegerExpressions(t *testing.T) {
 		{
 			name:      "多条表达式语句",
 			input:     "1; 2;",
-			constants: []int64{1, 2},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpPop),
@@ -109,7 +110,7 @@ func TestCompileConstantOverflow(t *testing.T) {
 	compiler := New()
 
 	// 填满两个字节可表示的常量索引
-	compiler.constants = make([]int64, 1<<16)
+	compiler.constants = make([]value.Value, 1<<16)
 
 	err := compiler.Compile(
 		&ast.IntegerLiteral{Value: 123},
@@ -126,13 +127,13 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		constants    []int64
+		constants    []value.Value
 		instructions code.Instructions
 	}{
 		{
 			name:      "整数减法",
 			input:     "10 - 3;",
-			constants: []int64{10, 3},
+			constants: []value.Value{value.NewInt(10), value.NewInt(3)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -143,7 +144,7 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 		{
 			name:      "整数乘法",
 			input:     "6 * 7;",
-			constants: []int64{6, 7},
+			constants: []value.Value{value.NewInt(6), value.NewInt(7)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -154,7 +155,7 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 		{
 			name:      "整数除法",
 			input:     "20 / 4;",
-			constants: []int64{20, 4},
+			constants: []value.Value{value.NewInt(20), value.NewInt(4)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -165,7 +166,7 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 		{
 			name:      "一元负号",
 			input:     "-10;",
-			constants: []int64{10},
+			constants: []value.Value{value.NewInt(10)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpNeg),
@@ -175,7 +176,7 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 		{
 			name:      "算术优先级",
 			input:     "1 + 2 * 3;",
-			constants: []int64{1, 2, 3},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2), value.NewInt(3)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -188,7 +189,7 @@ func TestCompileExtendedArithmetic(t *testing.T) {
 		{
 			name:      "括号与一元负号",
 			input:     "-(10 - 3);",
-			constants: []int64{10, 3},
+			constants: []value.Value{value.NewInt(10), value.NewInt(3)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -320,7 +321,7 @@ func TestCompileBooleanExpressions(t *testing.T) {
 
 			result := compiler.Bytecode()
 
-			// 布尔字面量不占用整数常量池
+			// 布尔字面量不占用常量池
 			if len(result.Constants) != 0 {
 				t.Fatalf(
 					"expected empty constant pool, got %v",
@@ -348,13 +349,13 @@ func TestCompileComparisonExpressions(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		constants    []int64
+		constants    []value.Value
 		instructions code.Instructions
 	}{
 		{
 			name:      "整数相等",
 			input:     "10 == 10;",
-			constants: []int64{10, 10},
+			constants: []value.Value{value.NewInt(10), value.NewInt(10)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -365,7 +366,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "整数不等",
 			input:     "10 != 20;",
-			constants: []int64{10, 20},
+			constants: []value.Value{value.NewInt(10), value.NewInt(20)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -376,7 +377,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "整数小于",
 			input:     "5 < 10;",
-			constants: []int64{5, 10},
+			constants: []value.Value{value.NewInt(5), value.NewInt(10)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -387,7 +388,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "整数小于等于",
 			input:     "5 <= 10;",
-			constants: []int64{5, 10},
+			constants: []value.Value{value.NewInt(5), value.NewInt(10)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -398,7 +399,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "整数大于",
 			input:     "10 > 5;",
-			constants: []int64{10, 5},
+			constants: []value.Value{value.NewInt(10), value.NewInt(5)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -409,7 +410,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "整数大于等于",
 			input:     "10 >= 5;",
-			constants: []int64{10, 5},
+			constants: []value.Value{value.NewInt(10), value.NewInt(5)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -430,7 +431,7 @@ func TestCompileComparisonExpressions(t *testing.T) {
 		{
 			name:      "算术与比较嵌套",
 			input:     "(1 + 2) > 2;",
-			constants: []int64{1, 2, 2},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2), value.NewInt(2)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpConstant), 0, 1,
@@ -491,13 +492,13 @@ func TestCompileIfStatements(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		constants    []int64
+		constants    []value.Value
 		instructions code.Instructions
 	}{
 		{
 			name:      "无 sore 分支",
 			input:     "moshi (hai) { 10; }",
-			constants: []int64{10},
+			constants: []value.Value{value.NewInt(10)},
 			instructions: code.Instructions{
 				byte(code.OpTrue),
 				byte(code.OpJumpIfFalse), 0, 8,
@@ -508,7 +509,7 @@ func TestCompileIfStatements(t *testing.T) {
 		{
 			name:      "包含 sore 分支",
 			input:     "moshi (iie) { 10; } sore { 20; }",
-			constants: []int64{10, 20},
+			constants: []value.Value{value.NewInt(10), value.NewInt(20)},
 			instructions: code.Instructions{
 				byte(code.OpFalse),
 				byte(code.OpJumpIfFalse), 0, 11,
@@ -528,7 +529,7 @@ func TestCompileIfStatements(t *testing.T) {
                     2;
                 }
             }`,
-			constants: []int64{1, 2},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2)},
 			instructions: code.Instructions{
 				byte(code.OpTrue),
 				byte(code.OpJumpIfFalse), 0, 19,
@@ -547,7 +548,7 @@ func TestCompileIfStatements(t *testing.T) {
                 moshi (iie) {
                     2;
                 }`,
-			constants: []int64{1, 2},
+			constants: []value.Value{value.NewInt(1), value.NewInt(2)},
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
 				byte(code.OpPop),
@@ -607,7 +608,7 @@ func TestCompileShortCircuitExpressions(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
-		constants []int64
+		constants []value.Value
 		want      string
 	}{
 		{
@@ -633,7 +634,7 @@ func TestCompileShortCircuitExpressions(t *testing.T) {
 		{
 			name:      "逻辑与跳过右侧",
 			input:     "iie && (10 > 5);",
-			constants: []int64{10, 5},
+			constants: []value.Value{value.NewInt(10), value.NewInt(5)},
 			want: "0000 OpFalse\n" +
 				"0001 OpJumpIfFalse 14\n" +
 				"0004 OpConstant 0\n" +
@@ -646,7 +647,7 @@ func TestCompileShortCircuitExpressions(t *testing.T) {
 		{
 			name:      "逻辑或跳过右侧",
 			input:     "hai || (10 > 5);",
-			constants: []int64{10, 5},
+			constants: []value.Value{value.NewInt(10), value.NewInt(5)},
 			want: "0000 OpTrue\n" +
 				"0001 OpJumpIfFalse 8\n" +
 				"0004 OpTrue\n" +

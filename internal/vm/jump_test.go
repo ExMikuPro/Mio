@@ -237,7 +237,7 @@ func TestVMJumpErrors(t *testing.T) {
 					byte(code.OpConstant), 0, 0,
 					byte(code.OpJumpIfFalse), 0, 6,
 				},
-				Constants: []int64{10},
+				Constants: []value.Value{value.NewInt(10)},
 			},
 			wantErr: "requires bool",
 		},

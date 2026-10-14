@@ -9,6 +9,7 @@ import (
 	"Mio/internal/lexer"
 	"Mio/internal/parser"
 	"Mio/internal/token"
+	"Mio/internal/value"
 )
 
 // compileSource 将 Mio 源码编译为字节码
@@ -154,7 +155,7 @@ func TestVMRunErrors(t *testing.T) {
 				Instructions: code.Instructions{
 					byte(code.OpConstant), 0, 1,
 				},
-				Constants: []int64{10},
+				Constants: []value.Value{value.NewInt(10)},
 			},
 			wantErr: "out of range",
 		},
@@ -174,7 +175,7 @@ func TestVMRunErrors(t *testing.T) {
 					byte(code.OpConstant), 0, 0,
 					byte(code.OpAdd),
 				},
-				Constants: []int64{1},
+				Constants: []value.Value{value.NewInt(1)},
 			},
 			wantErr: "stack underflow",
 		},

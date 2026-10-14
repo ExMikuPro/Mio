@@ -7,19 +7,20 @@ import (
 	"Mio/internal/ast"
 	"Mio/internal/code"
 	"Mio/internal/token"
+	"Mio/internal/value"
 )
 
 // Bytecode 保存编译结果
 type Bytecode struct {
 	Instructions code.Instructions
-	Constants    []int64
+	Constants    []value.Value
 	GlobalsCount int
 }
 
 // Compiler 将 AST 编译为字节码
 type Compiler struct {
 	instructions code.Instructions
-	constants    []int64
+	constants    []value.Value
 
 	resolver   *resolver.Resolver
 	globals    map[resolver.Symbol]int
@@ -30,7 +31,7 @@ type Compiler struct {
 func New() *Compiler {
 	return &Compiler{
 		instructions: make(code.Instructions, 0),
-		constants:    make([]int64, 0),
+		constants:    make([]value.Value, 0),
 		globals:      make(map[resolver.Symbol]int),
 	}
 }
@@ -66,12 +67,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	// 编译整数字面量
 	case *ast.IntegerLiteral:
-		index, err := c.addConstant(n.Value)
+		index, err := c.addConstant(value.NewInt(n.Value))
 		if err != nil {
 			return err
 		}
 
 		return c.emit(code.OpConstant, index)
+
+	// 编译已解码的字符串字面量
+	case *ast.StringLiteral:
+		index, err := c.addConstant(value.NewString(n.Value))
+		if err != nil {
+			return err
+		}
+
+		return c.emit(code.OpConstant, index)
+
+	// mu 是空值，不是 unit
+	case *ast.NilLiteral:
+		return c.emit(code.OpNil)
 
 	// 括号分组不产生额外指令
 	case *ast.GroupedExpression:
@@ -269,15 +283,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 	}
 }
 
-// addConstant 将整数加入常量池
-func (c *Compiler) addConstant(value int64) (int, error) {
+// addConstant 将带类型的值加入常量池
+func (c *Compiler) addConstant(v value.Value) (int, error) {
 	// OpConstant 使用两个字节表示索引
 	if len(c.constants) >= 1<<16 {
 		return 0, fmt.Errorf("constant pool index overflow")
 	}
 
 	index := len(c.constants)
-	c.constants = append(c.constants, value)
+	c.constants = append(c.constants, v)
 
 	return index, nil
 }
@@ -305,7 +319,7 @@ func (c *Compiler) Bytecode() *Bytecode {
 			c.instructions...,
 		),
 		Constants: append(
-			[]int64(nil),
+			[]value.Value(nil),
 			c.constants...,
 		),
 		GlobalsCount: len(c.globals),

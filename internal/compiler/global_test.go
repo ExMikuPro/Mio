@@ -12,6 +12,7 @@ import (
 	"Mio/internal/resolver"
 	"Mio/internal/token"
 	"Mio/internal/typecheck"
+	"Mio/internal/value"
 )
 
 // compileGlobalSource 对经过语义检查的源码生成字节码
@@ -59,7 +60,7 @@ func TestCompileGlobalVariables(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
-		constants    []int64
+		constants    []value.Value
 		globalsCount int
 		instructions code.Instructions
 	}{
@@ -70,7 +71,7 @@ kaku age = 18;
 kaku next = age + 1;
 next;
 `,
-			constants:    []int64{18, 1},
+			constants:    []value.Value{value.NewInt(18), value.NewInt(1)},
 			globalsCount: 2,
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
@@ -90,7 +91,7 @@ kaku age = 18;
 age = 20;
 age;
 `,
-			constants:    []int64{18, 20},
+			constants:    []value.Value{value.NewInt(18), value.NewInt(20)},
 			globalsCount: 1,
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,
@@ -110,7 +111,7 @@ moshi (hai) {
 }
 age;
 `,
-			constants:    []int64{18, 1},
+			constants:    []value.Value{value.NewInt(18), value.NewInt(1)},
 			globalsCount: 1,
 			instructions: code.Instructions{
 				byte(code.OpConstant), 0, 0,

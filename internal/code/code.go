@@ -36,6 +36,8 @@ const (
 
 	OpSetGlobal
 	OpGetGlobal
+
+	OpNil
 )
 
 // Definition 描述指令名称及操作数长度
@@ -112,6 +114,9 @@ var definitions = map[Opcode]Definition{
 	OpGetGlobal: {
 		Name:          "OpGetGlobal",
 		OperandWidths: []int{2},
+	},
+	OpNil: {
+		Name: "OpNil",
 	},
 }
 
