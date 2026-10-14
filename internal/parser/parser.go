@@ -565,19 +565,40 @@ func (p *Parser) parseIfStatement() (*ast.IfStatement, error) {
 	}, nil
 }
 
-// parseReturnStatement 解析 kaesu 返回语句。
+// parseReturnStatement 解析带值或无值返回语句
 func (p *Parser) parseReturnStatement() (*ast.ReturnStatement, error) {
 	start := p.curToken.Start
+
+	// kaesu; 无返回表达式
+	if p.peekToken.Type == token.Semicolon {
+		p.nextToken()
+
+		return &ast.ReturnStatement{
+			Value: nil,
+			Range: ast.Span{
+				Start: start,
+				End:   p.curToken.End,
+			},
+		}, nil
+	}
+
+	// 移动到返回表达式
 	p.nextToken()
 
+	// 解析返回表达式
 	value, err := p.parseExpression(precLowest)
 	if err != nil {
 		return nil, err
 	}
 
+	// 检查语句结束符
 	if p.peekToken.Type != token.Semicolon {
-		return nil, fmt.Errorf("expected ';' after kaesu expression, got %s", p.peekToken.Type)
+		return nil, fmt.Errorf(
+			"expected ';' after kaesu expression, got %s",
+			p.peekToken.Type,
+		)
 	}
+
 	p.nextToken()
 
 	return &ast.ReturnStatement{
@@ -589,51 +610,95 @@ func (p *Parser) parseReturnStatement() (*ast.ReturnStatement, error) {
 	}, nil
 }
 
-// parseFunctionParameters 解析 waza 定义中的形参列表。
+// parseFunctionParameters 解析函数形参及可选类型标注
 func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, error) {
 	params := make([]*ast.Identifier, 0)
 
-	// 空形参列表，例如 waza f() {}。
+	// 处理空形参列表
 	if p.peekToken.Type == token.RParen {
 		p.nextToken()
 		return params, nil
 	}
 
 	for {
+		// 移动到形参名称
 		p.nextToken()
+
 		if p.curToken.Type != token.Ident {
-			return nil, fmt.Errorf("expected parameter name, got %s", p.curToken.Type)
+			return nil, fmt.Errorf(
+				"expected parameter name, got %s",
+				p.curToken.Type,
+			)
 		}
 
-		params = append(params, &ast.Identifier{
+		param := &ast.Identifier{
 			Name: p.curToken.Literal,
 			Range: ast.Span{
 				Start: p.curToken.Start,
 				End:   p.curToken.End,
 			},
-		})
+		}
 
+		// 解析可选的类型标注
+		if p.peekToken.Type == token.Colon {
+			// 移动到冒号
+			p.nextToken()
+
+			// 冒号后必须是类型名称
+			if p.peekToken.Type != token.Ident {
+				return nil, fmt.Errorf(
+					"expected parameter type after ':', got %s",
+					p.peekToken.Type,
+				)
+			}
+
+			// 移动到类型名称
+			p.nextToken()
+
+			param.DeclaredType = &ast.TypeRef{
+				Name: p.curToken.Literal,
+				Range: ast.Span{
+					Start: p.curToken.Start,
+					End:   p.curToken.End,
+				},
+			}
+		}
+
+		params = append(params, param)
+
+		// 没有逗号则结束形参解析
 		if p.peekToken.Type != token.Comma {
 			break
 		}
+
 		p.nextToken()
 	}
 
+	// 形参列表必须以右括号结束
 	if p.peekToken.Type != token.RParen {
-		return nil, fmt.Errorf("expected ')' after parameters, got %s", p.peekToken.Type)
+		return nil, fmt.Errorf(
+			"expected ')' after parameters, got %s",
+			p.peekToken.Type,
+		)
 	}
+
 	p.nextToken()
 
 	return params, nil
 }
 
-// parseFunctionStatement 解析 waza 函数定义语句。
+// parseFunctionStatement 解析函数定义及类型标注
 func (p *Parser) parseFunctionStatement() (*ast.FunctionStatement, error) {
 	start := p.curToken.Start
 
+	// 检查函数名称
 	if p.peekToken.Type != token.Ident {
-		return nil, fmt.Errorf("expected function name after waza, got %s", p.peekToken.Type)
+		return nil, fmt.Errorf(
+			"expected function name after waza, got %s",
+			p.peekToken.Type,
+		)
 	}
+
 	p.nextToken()
 
 	name := &ast.Identifier{
@@ -644,21 +709,60 @@ func (p *Parser) parseFunctionStatement() (*ast.FunctionStatement, error) {
 		},
 	}
 
+	// 检查形参列表的左括号
 	if p.peekToken.Type != token.LParen {
-		return nil, fmt.Errorf("expected '(' after function name, got %s", p.peekToken.Type)
+		return nil, fmt.Errorf(
+			"expected '(' after function name, got %s",
+			p.peekToken.Type,
+		)
 	}
+
 	p.nextToken()
 
+	// 解析函数形参
 	params, err := p.parseFunctionParameters()
 	if err != nil {
 		return nil, err
 	}
 
-	if p.peekToken.Type != token.LBrace {
-		return nil, fmt.Errorf("expected '{' after parameters, got %s", p.peekToken.Type)
+	// 解析可选的返回类型
+	var returnType *ast.TypeRef
+
+	if p.peekToken.Type == token.Arrow {
+		// 移动到 ->
+		p.nextToken()
+
+		// 箭头后必须是类型名称
+		if p.peekToken.Type != token.Ident {
+			return nil, fmt.Errorf(
+				"expected return type after '->', got %s",
+				p.peekToken.Type,
+			)
+		}
+
+		// 移动到返回类型名称
+		p.nextToken()
+
+		returnType = &ast.TypeRef{
+			Name: p.curToken.Literal,
+			Range: ast.Span{
+				Start: p.curToken.Start,
+				End:   p.curToken.End,
+			},
+		}
 	}
+
+	// 检查函数体左大括号
+	if p.peekToken.Type != token.LBrace {
+		return nil, fmt.Errorf(
+			"expected '{' after function signature, got %s",
+			p.peekToken.Type,
+		)
+	}
+
 	p.nextToken()
 
+	// 解析函数体
 	body, err := p.parseBlockStatement()
 	if err != nil {
 		return nil, err
@@ -667,6 +771,7 @@ func (p *Parser) parseFunctionStatement() (*ast.FunctionStatement, error) {
 	return &ast.FunctionStatement{
 		Name:       name,
 		Parameters: params,
+		ReturnType: returnType,
 		Body:       body,
 		Range: ast.Span{
 			Start: start,

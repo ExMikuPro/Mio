@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"Mio/internal/ast"
@@ -958,12 +959,12 @@ func TestReturnStatement(t *testing.T) {
 	}
 }
 
-// 测试非法 kaesu 返回语句
+// 测试非法返回语句的语法检查
 func TestInvalidReturnStatement(t *testing.T) {
 	inputs := []string{
-		"kaesu;",
 		"kaesu 123",
 		"kaesu 1 +;",
+		"kaesu",
 	}
 
 	for _, input := range inputs {
@@ -1188,5 +1189,214 @@ chant(result);`
 	if span.Start.Offset != 0 ||
 		span.End.Offset != len(input) {
 		t.Fatalf("incorrect program span: %+v", span)
+	}
+}
+
+// 测试带类型标注的函数解析
+func TestParseTypedFunction(t *testing.T) {
+	input := `waza add(a: int64, b: int64) -> int64 {
+        kaesu a + b;
+    }`
+
+	l, err := lexer.NewChecked(input, token.V01)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := New(l)
+
+	program, err := p.ParseProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(program.Statements) != 1 {
+		t.Fatalf(
+			"got %d statements, want 1",
+			len(program.Statements),
+		)
+	}
+
+	fn, ok := program.Statements[0].(*ast.FunctionStatement)
+	if !ok {
+		t.Fatalf(
+			"got %T, want FunctionStatement",
+			program.Statements[0],
+		)
+	}
+
+	if fn.Name.Name != "add" {
+		t.Fatalf("got function %q, want add", fn.Name.Name)
+	}
+
+	if len(fn.Parameters) != 2 {
+		t.Fatalf(
+			"got %d parameters, want 2",
+			len(fn.Parameters),
+		)
+	}
+
+	// 检查形参名称与类型
+	names := []string{"a", "b"}
+
+	for i, name := range names {
+		param := fn.Parameters[i]
+
+		if param.Name != name {
+			t.Fatalf(
+				"parameter[%d]: got %q, want %q",
+				i, param.Name, name,
+			)
+		}
+
+		if param.DeclaredType == nil {
+			t.Fatalf(
+				"parameter %q has no type",
+				param.Name,
+			)
+		}
+
+		if param.DeclaredType.Name != "int64" {
+			t.Fatalf(
+				"parameter %q: got type %q",
+				param.Name,
+				param.DeclaredType.Name,
+			)
+		}
+	}
+
+	// 检查返回类型
+	if fn.ReturnType == nil {
+		t.Fatal("expected return type")
+	}
+
+	if fn.ReturnType.Name != "int64" {
+		t.Fatalf(
+			"got return type %q, want int64",
+			fn.ReturnType.Name,
+		)
+	}
+
+	// 检查第一个类型标注的源码范围
+	firstType := fn.Parameters[0].DeclaredType.Span()
+	wantOffset := strings.Index(input, "int64")
+
+	if firstType.Start.Offset != wantOffset ||
+		firstType.End.Offset != wantOffset+len("int64") {
+		t.Fatalf(
+			"incorrect type span: %+v",
+			firstType,
+		)
+	}
+
+	// 检查函数体
+	if len(fn.Body.Statements) != 1 {
+		t.Fatalf(
+			"got %d body statements, want 1",
+			len(fn.Body.Statements),
+		)
+	}
+
+	if _, ok := fn.Body.Statements[0].(*ast.ReturnStatement); !ok {
+		t.Fatal("expected ReturnStatement")
+	}
+}
+
+// 测试旧函数语法的解析兼容性
+func TestParseUntypedFunctionCompatibility(t *testing.T) {
+	input := `waza identity(value) {
+        kaesu value;
+    }`
+
+	l, err := lexer.NewChecked(input, token.V01)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := New(l)
+
+	program, err := p.ParseProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fn, ok := program.Statements[0].(*ast.FunctionStatement)
+	if !ok {
+		t.Fatalf("expected FunctionStatement, got %T",
+			program.Statements[0])
+	}
+
+	if len(fn.Parameters) != 1 {
+		t.Fatal("expected one parameter")
+	}
+
+	if fn.Parameters[0].DeclaredType != nil {
+		t.Fatal("expected no parameter type")
+	}
+
+	if fn.ReturnType != nil {
+		t.Fatal("expected no return type")
+	}
+}
+
+// 测试非法函数类型标注
+func TestInvalidFunctionTypeAnnotations(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name: "缺少形参类型",
+			input: `waza f(a: ) -> int64 {
+                kaesu 1;
+            }`,
+			wantErr: "expected parameter type",
+		},
+		{
+			name: "缺少返回类型",
+			input: `waza f(a: int64) -> {
+                kaesu a;
+            }`,
+			wantErr: "expected return type",
+		},
+		{
+			name: "形参缺少冒号",
+			input: `waza f(a int64) -> int64 {
+                kaesu a;
+            }`,
+			wantErr: "expected ')'",
+		},
+		{
+			name: "形参末尾多余逗号",
+			input: `waza f(a: int64,) -> int64 {
+                kaesu a;
+            }`,
+			wantErr: "expected parameter name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l, err := lexer.NewChecked(tt.input, token.V01)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			p := New(l)
+
+			_, err = p.ParseProgram()
+			if err == nil {
+				t.Fatal("expected parser error")
+			}
+
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf(
+					"expected error containing %q, got %q",
+					tt.wantErr,
+					err.Error(),
+				)
+			}
+		})
 	}
 }

@@ -177,3 +177,86 @@ func TestInfixExpressionTree(t *testing.T) {
 		t.Fatal("incorrect expression span")
 	}
 }
+
+// 测试函数形参与返回类型的 AST 表示
+func TestFunctionTypeAnnotations(t *testing.T) {
+	typeRange := Span{
+		Start: token.Position{
+			Offset: 12,
+			Line:   1,
+			Column: 13,
+		},
+		End: token.Position{
+			Offset: 17,
+			Line:   1,
+			Column: 18,
+		},
+	}
+
+	fn := &FunctionStatement{
+		Name: &Identifier{Name: "add"},
+		Parameters: []*Identifier{
+			{
+				Name: "a",
+				DeclaredType: &TypeRef{
+					Name:  "int64",
+					Range: typeRange,
+				},
+			},
+			{
+				Name: "b",
+				DeclaredType: &TypeRef{
+					Name: "int64",
+				},
+			},
+		},
+		ReturnType: &TypeRef{
+			Name: "int64",
+		},
+		Body: &BlockStatement{},
+	}
+
+	// 检查形参数量与类型
+	if len(fn.Parameters) != 2 {
+		t.Fatalf(
+			"got %d parameters, want 2",
+			len(fn.Parameters),
+		)
+	}
+
+	for _, param := range fn.Parameters {
+		if param.DeclaredType == nil {
+			t.Fatalf("parameter %q has no type", param.Name)
+		}
+
+		if param.DeclaredType.Name != "int64" {
+			t.Fatalf(
+				"parameter %q: got type %q, want int64",
+				param.Name,
+				param.DeclaredType.Name,
+			)
+		}
+	}
+
+	// 检查返回类型
+	if fn.ReturnType == nil {
+		t.Fatal("expected return type")
+	}
+
+	if fn.ReturnType.Name != "int64" {
+		t.Fatalf(
+			"got return type %q, want int64",
+			fn.ReturnType.Name,
+		)
+	}
+
+	// 检查类型标注的源码位置
+	got := fn.Parameters[0].DeclaredType.Span()
+	if got != typeRange {
+		t.Fatalf(
+			"got span %+v, want %+v",
+			got,
+			typeRange,
+		)
+	}
+}

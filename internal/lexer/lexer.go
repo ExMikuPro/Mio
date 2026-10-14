@@ -164,9 +164,18 @@ func (l *Lexer) NextToken() token.Token {
 			Literal: "+",
 		}
 	case '-':
-		tok = token.Token{
-			Type:    token.Minus,
-			Literal: "-",
+		if l.peekChar() == '>' {
+			l.readChar()
+
+			tok = token.Token{
+				Type:    token.Arrow,
+				Literal: "->",
+			}
+		} else {
+			tok = token.Token{
+				Type:    token.Minus,
+				Literal: "-",
+			}
 		}
 	case '*':
 		tok = token.Token{
@@ -313,6 +322,12 @@ func (l *Lexer) NextToken() token.Token {
 		tok = token.Token{
 			Type:    token.Comma,
 			Literal: ",",
+		}
+
+	case ':':
+		tok = token.Token{
+			Type:    token.Colon,
+			Literal: ":",
 		}
 
 	default:

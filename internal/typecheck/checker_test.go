@@ -376,11 +376,9 @@ func assertExpressionResult(
 	}
 }
 
-// 测试尚未实现的函数调用表达式
+// 测试不支持的表达式
 func TestUnsupportedExpression(t *testing.T) {
-	expr := &ast.CallExpression{
-		Function: &ast.Identifier{Name: "chant"},
-	}
+	var expr ast.Expression
 
 	got, err := New().checkExpression(expr)
 

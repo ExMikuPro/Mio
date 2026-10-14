@@ -61,6 +61,11 @@ const ( // 未来启用关键字 Token
 	Import Type = "IMPORT"
 )
 
+const (
+	Colon Type = ":"
+	Arrow Type = "->"
+)
+
 type Position struct { // 定义源码位置
 	Offset int
 	Line   int

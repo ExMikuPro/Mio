@@ -114,9 +114,9 @@ func (r *Resolver) resolveStatement(stmt ast.Statement) error {
 	case *ast.ExpressionStatement:
 		return r.resolveExpression(n.Expr)
 
-	// kaesu 返回语句
+		// kaesu 返回语句
 	case *ast.ReturnStatement:
-		// 检查是否在函数内部
+		// 返回语句只能位于函数内部
 		if r.functionDepth == 0 {
 			pos := n.Span().Start
 
@@ -125,6 +125,11 @@ func (r *Resolver) resolveStatement(stmt ast.Statement) error {
 				pos.Line,
 				pos.Column,
 			)
+		}
+
+		// 无返回表达式时无需解析名称
+		if n.Value == nil {
+			return nil
 		}
 
 		// 检查返回表达式中的名称

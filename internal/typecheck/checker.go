@@ -8,16 +8,20 @@ import (
 	"Mio/internal/token"
 )
 
-// Checker 负责表达式的静态类型检查
+// Checker 负责静态类型检查
 type Checker struct {
-	resolver *resolver.Resolver
-	types    map[resolver.Symbol]Kind
+	resolver   *resolver.Resolver
+	types      map[resolver.Symbol]Kind
+	signatures map[resolver.Symbol]FunctionSignature
+
+	returnTypes []Kind
 }
 
 // New 创建类型检查器
 func New() *Checker {
 	return &Checker{
-		types: make(map[resolver.Symbol]Kind),
+		types:      make(map[resolver.Symbol]Kind),
+		signatures: make(map[resolver.Symbol]FunctionSignature),
 	}
 }
 
@@ -206,6 +210,93 @@ func (c *Checker) checkExpression(expr ast.Expression) (Kind, error) {
 		}
 
 		return kind, nil
+
+	// 函数调用表达式
+	case *ast.CallExpression:
+		// 当前只支持通过函数名称调用
+		callee, ok := n.Function.(*ast.Identifier)
+		if !ok {
+			return KindInvalid, fmt.Errorf(
+				"call target must be a function name, got %T",
+				n.Function,
+			)
+		}
+
+		if c.resolver == nil {
+			return KindInvalid, fmt.Errorf(
+				"function call %q requires resolved symbols",
+				callee.Name,
+			)
+		}
+
+		// 获取调用目标绑定的符号
+		symbol, ok := c.resolver.BindingOf(callee)
+		if !ok {
+			return KindInvalid, fmt.Errorf(
+				"missing symbol binding for function %q",
+				callee.Name,
+			)
+		}
+
+		// 内置函数暂时单独处理
+		if symbol.Kind == resolver.SymbolBuiltin {
+			return c.checkBuiltinCall(callee.Name, n.Arguments)
+		}
+
+		// 禁止调用普通变量或形参
+		if symbol.Kind != resolver.SymbolFunction {
+			return KindInvalid, fmt.Errorf(
+				"cannot call %s %q",
+				symbol.Kind,
+				callee.Name,
+			)
+		}
+
+		// 查询已注册的函数签名
+		signature, ok := c.SignatureOf(callee)
+		if !ok {
+			return KindInvalid, fmt.Errorf(
+				"missing function signature for %q",
+				callee.Name,
+			)
+		}
+
+		// 检查实参数量
+		if len(n.Arguments) != len(signature.ParameterTypes) {
+			return KindInvalid, fmt.Errorf(
+				"function %q expects %d arguments, got %d",
+				callee.Name,
+				len(signature.ParameterTypes),
+				len(n.Arguments),
+			)
+		}
+
+		// 逐个检查实参类型
+		for i, arg := range n.Arguments {
+			actual, err := c.checkExpression(arg)
+			if err != nil {
+				return KindInvalid, err
+			}
+
+			expected := signature.ParameterTypes[i]
+
+			if actual != expected {
+				pos := arg.Span().Start
+
+				return KindInvalid, fmt.Errorf(
+					"argument %d to %q: expected %s, got %s at %d:%d",
+					i+1,
+					callee.Name,
+					expected,
+					actual,
+					pos.Line,
+					pos.Column,
+				)
+			}
+		}
+
+		// 函数调用表达式的类型就是声明的返回类型
+		return signature.ReturnType, nil
 
 	default:
 		return KindInvalid, fmt.Errorf(

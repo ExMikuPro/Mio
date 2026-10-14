@@ -47,8 +47,9 @@ type Program struct {
 
 // 标识符
 type Identifier struct {
-	Name  string
-	Range Span
+	Name         string
+	DeclaredType *TypeRef
+	Range        Span
 }
 
 // 中缀表达式
@@ -134,8 +135,14 @@ type ReturnStatement struct {
 type FunctionStatement struct {
 	Name       *Identifier
 	Parameters []*Identifier
+	ReturnType *TypeRef
 	Body       *BlockStatement
 	Range      Span
+}
+
+type TypeRef struct {
+	Name  string
+	Range Span
 }
 
 // 整数字面量
@@ -253,4 +260,8 @@ func (n *FunctionStatement) statementNode() {}
 
 func (n *FunctionStatement) Span() Span {
 	return n.Range
+}
+
+func (t *TypeRef) Span() Span {
+	return t.Range
 }

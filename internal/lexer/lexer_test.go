@@ -1001,3 +1001,56 @@ chant(name);`
 		)
 	}
 }
+
+// 测试函数类型标注符号与减号的识别
+func TestFunctionTypeTokens(t *testing.T) {
+	input := "a: int64 -> bool; -10; x->string;"
+
+	tests := []struct {
+		typ     token.Type
+		literal string
+	}{
+		{token.Ident, "a"},
+		{token.Colon, ":"},
+		{token.Ident, "int64"},
+		{token.Arrow, "->"},
+		{token.Ident, "bool"},
+		{token.Semicolon, ";"},
+		{token.Minus, "-"},
+		{token.Integer, "10"},
+		{token.Semicolon, ";"},
+		{token.Ident, "x"},
+		{token.Arrow, "->"},
+		{token.Ident, "string"},
+		{token.Semicolon, ";"},
+		{token.EOF, ""},
+	}
+
+	l := New(input, token.V01)
+
+	for i, tt := range tests {
+		got := l.NextToken()
+
+		if got.Type != tt.typ {
+			t.Fatalf(
+				"token[%d]: got type %s, want %s",
+				i,
+				got.Type,
+				tt.typ,
+			)
+		}
+
+		if got.Literal != tt.literal {
+			t.Fatalf(
+				"token[%d]: got literal %q, want %q",
+				i,
+				got.Literal,
+				tt.literal,
+			)
+		}
+	}
+
+	if err := l.Err(); err != nil {
+		t.Fatalf("unexpected lexical error: %v", err)
+	}
+}
