@@ -2,6 +2,8 @@ package vm
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"Mio/internal/code"
 	"Mio/internal/compiler"
@@ -13,6 +15,7 @@ type VM struct {
 	bytecode *compiler.Bytecode
 	stack    []value.Value
 	globals  []value.Value
+	output   io.Writer
 
 	lastPopped    value.Value
 	hasLastPopped bool
@@ -20,9 +23,15 @@ type VM struct {
 
 // New 创建字节码虚拟机
 func New(bytecode *compiler.Bytecode) *VM {
+	return NewWithOutput(bytecode, os.Stdout)
+}
+
+// NewWithOutput 创建使用指定输出流的 VM；nil 输出流在执行 chant 时报告错误。
+func NewWithOutput(bytecode *compiler.Bytecode, output io.Writer) *VM {
 	return &VM{
 		bytecode: bytecode,
 		stack:    make([]value.Value, 0),
+		output:   output,
 	}
 }
 
@@ -105,6 +114,18 @@ func (v *VM) Run() error {
 		// mu 空值入栈
 		case code.OpNil:
 			v.stack = append(v.stack, value.NewNil())
+
+		// chant 消费一个参数，返回 unit，不产生运行时值或普通表达式结果。
+		case code.OpChant:
+			size := len(v.stack)
+			if size == 0 {
+				return fmt.Errorf("stack underflow for OpChant at %d", ip)
+			}
+			argument := v.stack[size-1]
+			v.stack = v.stack[:size-1]
+			if err := value.WriteLine(v.output, argument); err != nil {
+				return fmt.Errorf("OpChant at offset %d: %w", ip, err)
+			}
 
 		// 整数二元算术运算
 		case code.OpAdd,

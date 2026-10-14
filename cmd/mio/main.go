@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"Mio/internal/ast"
 	"Mio/internal/compiler"
 	"Mio/internal/lexer"
+	"Mio/internal/mochi"
 	"Mio/internal/parser"
 	"Mio/internal/resolver"
 	"Mio/internal/token"
@@ -45,54 +49,224 @@ func runCLI(
 		}
 	}
 
-	// check 和 run 都需要一个源码路径
-	if len(args) != 2 ||
-		(args[0] != "check" && args[0] != "run") {
+	if len(args) == 0 {
 		printUsage(stderr)
 		return 2
 	}
 
-	// 读取、解析并检查 Mio 源码
-	program, r, err := parseAndCheckFile(args[1])
-	if err != nil {
-		fmt.Fprintln(stderr, "mio:", err)
-		return 1
-	}
+	switch args[0] {
+	case "check", "run":
+		if len(args) != 2 {
+			printUsage(stderr)
+			return 2
+		}
 
-	// 静态检查通过后直接退出
-	if args[0] == "check" {
-		fmt.Fprintln(stdout, "check passed")
+		// 读取、解析并检查 Mio 源码
+		program, r, err := parseAndCheckFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, "mio:", err)
+			return 1
+		}
+
+		// 静态检查通过后直接退出
+		if args[0] == "check" {
+			fmt.Fprintln(stdout, "check passed")
+			return 0
+		}
+
+		bytecode, err := compileProgram(program, r)
+		if err != nil {
+			fmt.Fprintln(stderr, "mio: compile:", err)
+			return 1
+		}
+
+		runtimeError, err := executeBytecode(bytecode, stdout)
+		if err != nil {
+			if runtimeError {
+				fmt.Fprintln(stderr, "mio: runtime:", err)
+			} else {
+				fmt.Fprintln(stderr, "mio:", err)
+			}
+			return 1
+		}
+
 		return 0
-	}
 
-	// 将经过检查的 AST 编译为字节码
+	case "build":
+		sourcePath, outputPath, ok := parseBuildArgs(args[1:])
+		if !ok {
+			printUsage(stderr)
+			return 2
+		}
+
+		program, r, err := parseAndCheckFile(sourcePath)
+		if err != nil {
+			fmt.Fprintln(stderr, "mio:", err)
+			return 1
+		}
+		bytecode, err := compileProgram(program, r)
+		if err != nil {
+			fmt.Fprintln(stderr, "mio: compile:", err)
+			return 1
+		}
+		if err := writeMochiFile(outputPath, bytecode); err != nil {
+			fmt.Fprintln(stderr, "mio: build:", err)
+			return 1
+		}
+		return 0
+
+	case "exec", "disasm":
+		if len(args) != 2 {
+			printUsage(stderr)
+			return 2
+		}
+
+		bytecode, err := decodeMochiFile(args[1])
+		if err != nil {
+			fmt.Fprintln(stderr, "mio: decode:", err)
+			return 1
+		}
+
+		if args[0] == "disasm" {
+			if err := printDisassembly(stdout, bytecode); err != nil {
+				fmt.Fprintln(stderr, "mio: disasm:", err)
+				return 1
+			}
+			return 0
+		}
+
+		runtimeError, err := executeBytecode(bytecode, stdout)
+		if err != nil {
+			if runtimeError {
+				fmt.Fprintln(stderr, "mio: runtime:", err)
+			} else {
+				fmt.Fprintln(stderr, "mio:", err)
+			}
+			return 1
+		}
+		return 0
+
+	default:
+		printUsage(stderr)
+		return 2
+	}
+}
+
+// compileProgram 将经过检查的 AST 编译为字节码
+func compileProgram(program *ast.Program, r *resolver.Resolver) (*compiler.Bytecode, error) {
 	c := compiler.NewWithResolver(r)
-
 	if err := c.Compile(program); err != nil {
-		fmt.Fprintln(stderr, "mio: compile:", err)
-		return 1
+		return nil, err
 	}
+	return c.Bytecode(), nil
+}
 
-	// 创建并执行虚拟机
-	machine := vm.New(c.Bytecode())
-
+// executeBytecode 执行字节码并显示最后一条普通表达式
+func executeBytecode(bytecode *compiler.Bytecode, stdout io.Writer) (bool, error) {
+	machine := vm.NewWithOutput(bytecode, stdout)
 	if err := machine.Run(); err != nil {
-		fmt.Fprintln(stderr, "mio: runtime:", err)
-		return 1
+		return true, err
 	}
 
-	// 显示最后一条表达式的计算结果
 	result, ok := machine.LastPoppedValue()
 	if !ok {
-		return 0
+		return false, nil
+	}
+	return false, printValue(stdout, result)
+}
+
+// parseBuildArgs 解析 build 命令参数
+func parseBuildArgs(args []string) (string, string, bool) {
+	if len(args) == 1 {
+		sourcePath := args[0]
+		extension := filepath.Ext(sourcePath)
+		return sourcePath, strings.TrimSuffix(sourcePath, extension) + mochi.Extension, true
+	}
+	if len(args) == 3 && args[0] == "-o" && args[1] != "" {
+		return args[2], args[1], true
+	}
+	if len(args) == 3 && args[1] == "-o" && args[2] != "" {
+		return args[0], args[2], true
+	}
+	return "", "", false
+}
+
+// writeMochiFile 原子写入经过验证的 Mochi 文件
+func writeMochiFile(path string, bytecode *compiler.Bytecode) error {
+	if err := mochi.Validate(bytecode); err != nil {
+		return fmt.Errorf("validate bytecode: %w", err)
 	}
 
-	if err := printValue(stdout, result); err != nil {
-		fmt.Fprintln(stderr, "mio:", err)
-		return 1
+	directory := filepath.Dir(path)
+	temporary, err := os.CreateTemp(directory, ".mio-build-*")
+	if err != nil {
+		return fmt.Errorf("create temporary file for %q: %w", path, err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+
+	if err := mochi.Encode(temporary, bytecode); err != nil {
+		temporary.Close()
+		return fmt.Errorf("encode %q: %w", path, err)
+	}
+	if err := temporary.Chmod(0644); err != nil {
+		temporary.Close()
+		return fmt.Errorf("set permissions for %q: %w", path, err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary file for %q: %w", path, err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace %q: %w", path, err)
+	}
+	return nil
+}
+
+// decodeMochiFile 读取并解码 Mochi 文件
+func decodeMochiFile(path string) (*compiler.Bytecode, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", path, err)
+	}
+	defer file.Close()
+
+	bytecode, err := mochi.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	return bytecode, nil
+}
+
+// printDisassembly 输出 Mochi 字节码内容
+func printDisassembly(out io.Writer, bytecode *compiler.Bytecode) error {
+	if err := mochi.Validate(bytecode); err != nil {
+		return fmt.Errorf("validate bytecode: %w", err)
 	}
 
-	return 0
+	if _, err := fmt.Fprintf(out, "Globals: %d\nConstants (%d):\n", bytecode.GlobalsCount, len(bytecode.Constants)); err != nil {
+		return err
+	}
+	for index, constant := range bytecode.Constants {
+		var display string
+		switch constant.Kind() {
+		case value.KindInt:
+			integer, _ := constant.Int64()
+			display = strconv.FormatInt(integer, 10)
+		case value.KindString:
+			text, _ := constant.Text()
+			display = strconv.Quote(text)
+		default:
+			return fmt.Errorf("constant %d has unsupported kind %s", index, constant.Kind())
+		}
+		if _, err := fmt.Fprintf(out, "  [%d] %s %s\n", index, constant.Kind(), display); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(out, "Instructions:"); err != nil {
+		return err
+	}
+	_, err := io.WriteString(out, bytecode.Instructions.String())
+	return err
 }
 
 // parseAndCheckFile 完成源码读取与静态语义检查
@@ -148,38 +322,7 @@ func parseAndCheckFile(
 
 // printValue 显示 Mio 运行时值
 func printValue(out io.Writer, v value.Value) error {
-	switch v.Kind() {
-	case value.KindInt:
-		number, _ := v.Int64()
-		_, err := fmt.Fprintln(out, number)
-		return err
-
-	case value.KindBool:
-		boolean, _ := v.Bool()
-
-		if boolean {
-			_, err := fmt.Fprintln(out, "hai")
-			return err
-		}
-
-		_, err := fmt.Fprintln(out, "iie")
-		return err
-
-	case value.KindString:
-		text, _ := v.Text()
-		_, err := fmt.Fprintln(out, text)
-		return err
-
-	case value.KindNil:
-		_, err := fmt.Fprintln(out, "mu")
-		return err
-
-	default:
-		return fmt.Errorf(
-			"cannot display runtime value of type %s",
-			v.Kind(),
-		)
-	}
+	return value.WriteLine(out, v)
 }
 
 // printUsage 显示命令行用法
@@ -187,6 +330,9 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage:")
 	fmt.Fprintln(out, "  mio check <file.mio>")
 	fmt.Fprintln(out, "  mio run <file.mio>")
+	fmt.Fprintln(out, "  mio build [-o <file.mochi>] <file.mio>")
+	fmt.Fprintln(out, "  mio exec <file.mochi>")
+	fmt.Fprintln(out, "  mio disasm <file.mochi>")
 	fmt.Fprintln(out, "  mio version")
 	fmt.Fprintln(out, "  mio help")
 }

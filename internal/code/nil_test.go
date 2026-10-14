@@ -7,7 +7,7 @@ func TestOpcodeNumbersStable(t *testing.T) {
 		OpConstant, OpAdd, OpPop, OpSub, OpMul, OpDiv, OpNeg,
 		OpTrue, OpFalse, OpNot, OpEqual, OpNotEqual, OpLess,
 		OpLessEqual, OpGreater, OpGreaterEqual, OpJump, OpJumpIfFalse,
-		OpSetGlobal, OpGetGlobal, OpNil,
+		OpSetGlobal, OpGetGlobal, OpNil, OpChant,
 	}
 	for i, op := range ops {
 		if int(op) != i+1 {

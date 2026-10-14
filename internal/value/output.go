@@ -1,0 +1,38 @@
+package value
+
+import (
+	"fmt"
+	"io"
+	"strconv"
+)
+
+// WriteLine 按 Mio 的显示规则输出一个基础值，并追加换行；不改变值的类型。
+func WriteLine(out io.Writer, v Value) error {
+	var text string
+	switch v.Kind() {
+	case KindInt:
+		number, _ := v.Int64()
+		text = strconv.FormatInt(number, 10)
+	case KindBool:
+		boolean, _ := v.Bool()
+		text = "iie"
+		if boolean {
+			text = "hai"
+		}
+	case KindString:
+		text, _ = v.Text()
+	case KindNil:
+		text = "mu"
+	default:
+		return fmt.Errorf("cannot display runtime value of type %s", v.Kind())
+	}
+	if out == nil {
+		return fmt.Errorf("missing output writer")
+	}
+	line := text + "\n"
+	n, err := io.WriteString(out, line)
+	if err == nil && n != len(line) {
+		return io.ErrShortWrite
+	}
+	return err
+}

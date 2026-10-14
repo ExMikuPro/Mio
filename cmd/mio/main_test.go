@@ -60,9 +60,9 @@ age;
 		{
 			name:     "尚未支持的运行时功能",
 			command:  "run",
-			source:   `chant(10);`,
+			source:   `f(); waza f() -> unit { kaesu; }`,
 			wantCode: 1,
-			wantErr:  "unsupported AST node",
+			wantErr:  "user function call",
 		},
 	}
 

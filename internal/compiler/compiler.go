@@ -59,11 +59,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	// 编译表达式语句
 	case *ast.ExpressionStatement:
-		if err := c.Compile(n.Expr); err != nil {
-			return err
-		}
+		return c.compileExpressionStatement(n.Expr)
 
-		return c.emit(code.OpPop)
+	case *ast.CallExpression:
+		return c.compileCall(n)
+
+	case *ast.FunctionStatement:
+		return fmt.Errorf("user function declaration %q is not supported yet", n.Name.Name)
 
 	// 编译整数字面量
 	case *ast.IntegerLiteral:
