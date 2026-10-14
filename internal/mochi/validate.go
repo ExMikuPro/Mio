@@ -66,10 +66,10 @@ func Validate(bytecode *compiler.Bytecode) error {
 		if !utf8.ValidString(function.Name) {
 			return fmt.Errorf("function %d name contains invalid UTF-8", index)
 		}
-		if function.ParameterCount < 0 || function.ParameterCount > 1<<16 {
+		if function.ParameterCount < 0 || function.ParameterCount > MaxFunctionSlots {
 			return fmt.Errorf("function %d parameter count %d is outside range", index, function.ParameterCount)
 		}
-		if function.LocalCount < function.ParameterCount || function.LocalCount > 1<<16 {
+		if function.LocalCount < function.ParameterCount || function.LocalCount > MaxFunctionSlots {
 			return fmt.Errorf("function %d local count %d is invalid", index, function.LocalCount)
 		}
 		if len(function.Instructions) > MaxInstructionBytes {

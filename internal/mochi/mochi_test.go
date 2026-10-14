@@ -214,6 +214,9 @@ func TestDecodeRejectsMalformedFiles(t *testing.T) {
 		{name: "get global index", data: rawFile(0, nil, 0, []byte{byte(code.OpGetGlobal), 0, 0}), want: "global slot index"},
 		{name: "jump out of range", data: rawFile(0, nil, 0, []byte{byte(code.OpJump), 0, 4}), want: "jump target"},
 		{name: "jump into operand", data: rawFile(0, nil, 0, []byte{byte(code.OpJump), 0, 1}), want: "instruction boundary"},
+		{name: "oversized parameter count", data: rawV2Function(MaxFunctionSlots+1, MaxFunctionSlots+1), want: "parameter count"},
+		{name: "locals below parameters", data: rawV2Function(1, 0), want: "local count"},
+		{name: "oversized local count", data: rawV2Function(0, MaxFunctionSlots+1), want: "local count"},
 		{name: "trailing data", data: withTrailing, want: "trailing file data"},
 	}
 
@@ -360,4 +363,36 @@ func u32(value uint32) []byte {
 	var data [4]byte
 	binary.BigEndian.PutUint32(data[:], value)
 	return data[:]
+}
+
+func rawV2Function(parameterCount, localCount uint32) []byte {
+	data := append([]byte(nil), fileSignature...)
+	data = append(data, 0, byte(Version))
+	data = append(data, u32(0)...)
+	data = append(data, u32(0)...)
+	data = append(data, u32(0)...)
+	data = append(data, u32(1)...)
+	data = append(data, 0, 0)
+	data = append(data, 0, 1, 'f')
+	data = append(data, u32(parameterCount)...)
+	data = append(data, u32(localCount)...)
+	data = append(data, 0)
+	data = append(data, u32(1)...)
+	return append(data, byte(code.OpReturn))
+}
+
+// 模糊测试 Mochi 解码不会接受不一致结构或发生崩溃
+func FuzzDecode(f *testing.F) {
+	f.Add([]byte{})
+	f.Add(rawFile(0, nil, 0, nil))
+	f.Add(rawV2Function(0, 0))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		bytecode, err := Decode(bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+		if err := Validate(bytecode); err != nil {
+			t.Fatalf("Decode returned invalid bytecode: %v", err)
+		}
+	})
 }

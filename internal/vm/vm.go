@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +16,17 @@ const (
 	MaxCallDepth = 1024
 	// MaxValueStack 限制共享 Value Stack 的元素数量
 	MaxValueStack = 1 << 16
+	// DefaultInstructionLimit 限制单次执行的指令数量
+	DefaultInstructionLimit uint64 = 10_000_000
 )
+
+// ExecutionOptions 配置单次字节码执行
+type ExecutionOptions struct {
+	// Context 用于取消执行；nil 表示不主动取消
+	Context context.Context
+	// InstructionLimit 限制指令数量；0 使用默认值
+	InstructionLimit uint64
+}
 
 type frame struct {
 	functionID   int
@@ -46,8 +57,20 @@ func NewWithOutput(bytecode *compiler.Bytecode, output io.Writer) *VM {
 	return &VM{bytecode: bytecode, stack: make([]value.Value, 0), frames: make([]frame, 0), output: output}
 }
 
-// Run 解码并执行字节码
+// Run 使用默认预算解码并执行字节码
 func (v *VM) Run() error {
+	return v.RunWithOptions(ExecutionOptions{})
+}
+
+// RunWithOptions 使用指定选项解码并执行字节码
+func (v *VM) RunWithOptions(options ExecutionOptions) (runErr error) {
+	v.resetExecutionState()
+	defer func() {
+		if runErr != nil {
+			v.resetExecutionState()
+		}
+	}()
+
 	if v.bytecode == nil {
 		return fmt.Errorf("nil bytecode")
 	}
@@ -67,12 +90,27 @@ func (v *VM) Run() error {
 			return fmt.Errorf("invalid frame metadata for function %d", index)
 		}
 	}
+	if err := validateInstructionBoundaries(v.bytecode.Instructions); err != nil {
+		return fmt.Errorf("main instructions: %w", err)
+	}
+	for index, function := range v.bytecode.Functions {
+		if err := validateInstructionBoundaries(function.Instructions); err != nil {
+			return fmt.Errorf("function %d instructions: %w", index, err)
+		}
+	}
 
 	v.globals = make([]value.Value, v.bytecode.GlobalsCount)
-	v.stack = v.stack[:0]
 	v.frames = append(v.frames[:0], frame{functionID: -1, instructions: v.bytecode.Instructions})
-	v.lastPopped = value.Value{}
-	v.hasLastPopped = false
+
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	limit := options.InstructionLimit
+	if limit == 0 {
+		limit = DefaultInstructionLimit
+	}
+	var executed uint64
 
 	for len(v.frames) > 0 {
 		frameIndex := len(v.frames) - 1
@@ -81,12 +119,24 @@ func (v *VM) Run() error {
 			if current.functionID >= 0 {
 				return fmt.Errorf("function %d exited without return", current.functionID)
 			}
+			if len(v.stack) != 0 {
+				return fmt.Errorf("main exited with %d value stack entries", len(v.stack))
+			}
 			v.frames = v.frames[:frameIndex]
 			continue
 		}
 		if current.ip < 0 || current.ip > len(current.instructions) {
 			return fmt.Errorf("instruction pointer %d out of range", current.ip)
 		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("execution interrupted: %w", ctx.Err())
+		default:
+		}
+		if executed >= limit {
+			return fmt.Errorf("instruction limit %d exceeded", limit)
+		}
+		executed++
 
 		ip := current.ip
 		op := code.Opcode(current.instructions[ip])
@@ -248,6 +298,9 @@ func (v *VM) Run() error {
 			if function.ReturnsValue {
 				return fmt.Errorf("function %d returned without a value at %d", current.functionID, ip)
 			}
+			if len(v.stack) != v.operandBase() {
+				return fmt.Errorf("unit function %d returned with %d value stack entries at %d", current.functionID, len(v.stack)-v.operandBase(), ip)
+			}
 			v.stack = v.stack[:current.base]
 			v.frames = v.frames[:frameIndex]
 			continue
@@ -261,8 +314,11 @@ func (v *VM) Run() error {
 				return fmt.Errorf("unit function %d returned a value at %d", current.functionID, ip)
 			}
 			minimum := current.base + function.LocalCount
-			if len(v.stack) <= minimum {
+			if len(v.stack) < minimum+1 {
 				return fmt.Errorf("stack underflow for OpReturnValue at %d", ip)
+			}
+			if len(v.stack) != minimum+1 {
+				return fmt.Errorf("function %d returned with %d result values at %d", current.functionID, len(v.stack)-minimum, ip)
 			}
 			result := v.stack[len(v.stack)-1]
 			v.stack = v.stack[:current.base]
@@ -279,6 +335,51 @@ func (v *VM) Run() error {
 		v.frames[frameIndex].ip = nextIP
 	}
 
+	return nil
+}
+
+func (v *VM) resetExecutionState() {
+	v.stack = v.stack[:0]
+	v.frames = v.frames[:0]
+	v.globals = nil
+	v.lastPopped = value.Value{}
+	v.hasLastPopped = false
+}
+
+func validateInstructionBoundaries(instructions code.Instructions) error {
+	boundaries := make([]bool, len(instructions)+1)
+	boundaries[len(instructions)] = true
+	type jumpReference struct {
+		offset int
+		target int
+	}
+	var jumps []jumpReference
+
+	for offset := 0; offset < len(instructions); {
+		boundaries[offset] = true
+		op := code.Opcode(instructions[offset])
+		definition, err := code.Lookup(op)
+		if err != nil {
+			return fmt.Errorf("at offset %d: %w", offset, err)
+		}
+		operands, read, err := code.ReadOperands(definition, instructions[offset+1:])
+		if err != nil {
+			return fmt.Errorf("at offset %d: %w", offset, err)
+		}
+		if op == code.OpJump || op == code.OpJumpIfFalse {
+			jumps = append(jumps, jumpReference{offset: offset, target: operands[0]})
+		}
+		offset += 1 + read
+	}
+
+	for _, jump := range jumps {
+		if jump.target < 0 || jump.target >= len(boundaries) {
+			return fmt.Errorf("jump target %d out of range at %d", jump.target, jump.offset)
+		}
+		if !boundaries[jump.target] {
+			return fmt.Errorf("jump target %d is not an instruction boundary at %d", jump.target, jump.offset)
+		}
+	}
 	return nil
 }
 

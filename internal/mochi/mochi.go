@@ -54,6 +54,8 @@ const (
 	MaxInstructionBytes  = 16 << 20
 	MaxFunctions         = 1 << 16
 	MaxFunctionNameBytes = 0xffff
+	// MaxFunctionSlots 限制函数参数和局部槽位数量
+	MaxFunctionSlots = 1 << 16
 
 	constantTagInt    byte = 1
 	constantTagString byte = 2
@@ -305,6 +307,12 @@ func Decode(r io.Reader) (*compiler.Bytecode, error) {
 			localCount, err := readUint32(limited, fmt.Sprintf("function %d local count", i))
 			if err != nil {
 				return nil, err
+			}
+			if parameterCount > MaxFunctionSlots {
+				return nil, fmt.Errorf("mochi: function %d parameter count %d exceeds limit %d", i, parameterCount, MaxFunctionSlots)
+			}
+			if localCount < parameterCount || localCount > MaxFunctionSlots {
+				return nil, fmt.Errorf("mochi: function %d local count %d is invalid", i, localCount)
 			}
 			var flags [1]byte
 			if err := readFull(limited, flags[:], fmt.Sprintf("function %d flags", i)); err != nil {
