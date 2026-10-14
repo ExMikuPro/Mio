@@ -135,12 +135,35 @@ func TestCLIVersion(t *testing.T) {
 		t.Fatalf("unexpected exit code %d", code)
 	}
 
-	if !strings.Contains(stdout.String(), version) {
+	if stdout.String() != "Mio "+version+"\n" {
 		t.Fatalf(
-			"expected version %q, got %q",
-			version,
+			"expected version output %q, got %q",
+			"Mio "+version+"\\n",
 			stdout.String(),
 		)
+	}
+}
+
+// 测试帮助信息显示当前版本和全部命令
+func TestCLIHelpShowsCurrentVersion(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runCLI([]string{"help"}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr.String())
+	}
+	for _, want := range []string{
+		"Mio " + version + "\n",
+		"mio check <file.mio>",
+		"mio run <file.mio>",
+		"mio build [-o <file.mochi>] <file.mio>",
+		"mio exec <file.mochi>",
+		"mio disasm <file.mochi>",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("help output missing %q:\n%s", want, stdout.String())
+		}
 	}
 }
 

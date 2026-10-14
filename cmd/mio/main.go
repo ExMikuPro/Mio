@@ -20,7 +20,7 @@ import (
 	"Mio/internal/vm"
 )
 
-const version = "0.1.0-dev"
+var version = "0.1.0-alpha.1"
 
 // main 是 Mio 命令行程序的入口
 func main() {
@@ -352,6 +352,7 @@ func printValue(out io.Writer, v value.Value) error {
 
 // printUsage 显示命令行用法
 func printUsage(out io.Writer) {
+	fmt.Fprintf(out, "Mio %s\n", version)
 	fmt.Fprintln(out, "Usage:")
 	fmt.Fprintln(out, "  mio check <file.mio>")
 	fmt.Fprintln(out, "  mio run <file.mio>")
