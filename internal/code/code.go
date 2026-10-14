@@ -12,33 +12,35 @@ type Opcode byte
 type Instructions []byte
 
 const (
-	OpConstant Opcode = iota + 1
-	OpAdd
-	OpPop
-	OpSub
-	OpMul
-	OpDiv
-	OpNeg
+	OpConstant     Opcode = 1
+	OpAdd          Opcode = 2
+	OpPop          Opcode = 3
+	OpSub          Opcode = 4
+	OpMul          Opcode = 5
+	OpDiv          Opcode = 6
+	OpNeg          Opcode = 7
+	OpTrue         Opcode = 8
+	OpFalse        Opcode = 9
+	OpNot          Opcode = 10
+	OpEqual        Opcode = 11
+	OpNotEqual     Opcode = 12
+	OpLess         Opcode = 13
+	OpLessEqual    Opcode = 14
+	OpGreater      Opcode = 15
+	OpGreaterEqual Opcode = 16
+	OpJump         Opcode = 17
+	OpJumpIfFalse  Opcode = 18
+	OpSetGlobal    Opcode = 19
+	OpGetGlobal    Opcode = 20
+	OpNil          Opcode = 21
+	OpChant        Opcode = 22
 
-	OpTrue
-	OpFalse
-	OpNot
-
-	OpEqual
-	OpNotEqual
-	OpLess
-	OpLessEqual
-	OpGreater
-	OpGreaterEqual
-
-	OpJump
-	OpJumpIfFalse
-
-	OpSetGlobal
-	OpGetGlobal
-
-	OpNil
-	OpChant
+	// 函数相关 Opcode 从 23 开始固定编号
+	OpSetLocal    Opcode = 23
+	OpGetLocal    Opcode = 24
+	OpCall        Opcode = 25
+	OpReturn      Opcode = 26
+	OpReturnValue Opcode = 27
 )
 
 // Definition 描述指令名称及操作数长度
@@ -121,6 +123,24 @@ var definitions = map[Opcode]Definition{
 	},
 	OpChant: {
 		Name: "OpChant",
+	},
+	OpSetLocal: {
+		Name:          "OpSetLocal",
+		OperandWidths: []int{2},
+	},
+	OpGetLocal: {
+		Name:          "OpGetLocal",
+		OperandWidths: []int{2},
+	},
+	OpCall: {
+		Name:          "OpCall",
+		OperandWidths: []int{2},
+	},
+	OpReturn: {
+		Name: "OpReturn",
+	},
+	OpReturnValue: {
+		Name: "OpReturnValue",
 	},
 }
 

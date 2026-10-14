@@ -29,6 +29,9 @@ func Validate(bytecode *compiler.Bytecode) error {
 	if len(bytecode.Instructions) > MaxInstructionBytes {
 		return fmt.Errorf("instruction length %d exceeds limit %d", len(bytecode.Instructions), MaxInstructionBytes)
 	}
+	if len(bytecode.Functions) > MaxFunctions {
+		return fmt.Errorf("function count %d exceeds limit %d", len(bytecode.Functions), MaxFunctions)
+	}
 
 	for i, constant := range bytecode.Constants {
 		switch constant.Kind() {
@@ -46,23 +49,57 @@ func Validate(bytecode *compiler.Bytecode) error {
 		}
 	}
 
-	boundaries := make([]bool, len(bytecode.Instructions)+1)
-	boundaries[len(bytecode.Instructions)] = true
+	if err := validateInstructions(bytecode, bytecode.Instructions, nil); err != nil {
+		return fmt.Errorf("main instructions: %w", err)
+	}
+	for index := range bytecode.Functions {
+		function := &bytecode.Functions[index]
+		if function.ID != index {
+			return fmt.Errorf("function %d has non-canonical FunctionID %d", index, function.ID)
+		}
+		if function.Name == "" {
+			return fmt.Errorf("function %d has empty name", index)
+		}
+		if len(function.Name) > MaxFunctionNameBytes {
+			return fmt.Errorf("function %d name length %d exceeds limit %d", index, len(function.Name), MaxFunctionNameBytes)
+		}
+		if !utf8.ValidString(function.Name) {
+			return fmt.Errorf("function %d name contains invalid UTF-8", index)
+		}
+		if function.ParameterCount < 0 || function.ParameterCount > 1<<16 {
+			return fmt.Errorf("function %d parameter count %d is outside range", index, function.ParameterCount)
+		}
+		if function.LocalCount < function.ParameterCount || function.LocalCount > 1<<16 {
+			return fmt.Errorf("function %d local count %d is invalid", index, function.LocalCount)
+		}
+		if len(function.Instructions) > MaxInstructionBytes {
+			return fmt.Errorf("function %d instruction length %d exceeds limit %d", index, len(function.Instructions), MaxInstructionBytes)
+		}
+		if err := validateInstructions(bytecode, function.Instructions, function); err != nil {
+			return fmt.Errorf("function %d instructions: %w", index, err)
+		}
+	}
+
+	return nil
+}
+
+func validateInstructions(bytecode *compiler.Bytecode, instructions code.Instructions, function *compiler.CompiledFunction) error {
+	boundaries := make([]bool, len(instructions)+1)
+	boundaries[len(instructions)] = true
 	references := make([]instructionReference, 0)
 
-	for offset := 0; offset < len(bytecode.Instructions); {
+	for offset := 0; offset < len(instructions); {
 		boundaries[offset] = true
-		op := code.Opcode(bytecode.Instructions[offset])
+		op := code.Opcode(instructions[offset])
 		definition, err := code.Lookup(op)
 		if err != nil {
 			return fmt.Errorf("unknown opcode at offset %d: %w", offset, err)
 		}
-
-		operands, read, err := code.ReadOperands(definition, bytecode.Instructions[offset+1:])
+		operands, read, err := code.ReadOperands(definition, instructions[offset+1:])
 		if err != nil {
 			return fmt.Errorf("truncated operands at offset %d: %w", offset, err)
 		}
-		if 1+read <= 0 || offset+1+read > len(bytecode.Instructions) {
+		if offset+1+read > len(instructions) {
 			return fmt.Errorf("invalid instruction width at offset %d", offset)
 		}
 
@@ -75,21 +112,45 @@ func Validate(bytecode *compiler.Bytecode) error {
 			if operands[0] >= bytecode.GlobalsCount {
 				return fmt.Errorf("global slot index %d out of range at offset %d", operands[0], offset)
 			}
+		case code.OpSetLocal, code.OpGetLocal:
+			if function == nil {
+				return fmt.Errorf("%s outside function at offset %d", definition.Name, offset)
+			}
+			if operands[0] >= function.LocalCount {
+				return fmt.Errorf("local slot index %d out of range at offset %d", operands[0], offset)
+			}
+		case code.OpCall:
+			if operands[0] >= len(bytecode.Functions) {
+				return fmt.Errorf("FunctionID %d out of range at offset %d", operands[0], offset)
+			}
 		case code.OpJump, code.OpJumpIfFalse:
 			references = append(references, instructionReference{offset: offset, value: operands[0]})
+		case code.OpReturn:
+			if function == nil {
+				return fmt.Errorf("OpReturn outside function at offset %d", offset)
+			}
+			if function.ReturnsValue {
+				return fmt.Errorf("value-returning function uses OpReturn at offset %d", offset)
+			}
+		case code.OpReturnValue:
+			if function == nil {
+				return fmt.Errorf("OpReturnValue outside function at offset %d", offset)
+			}
+			if !function.ReturnsValue {
+				return fmt.Errorf("unit function uses OpReturnValue at offset %d", offset)
+			}
 		}
 
 		offset += 1 + read
 	}
 
 	for _, reference := range references {
-		if reference.value > len(bytecode.Instructions) {
+		if reference.value > len(instructions) {
 			return fmt.Errorf("jump target %d out of range at offset %d", reference.value, reference.offset)
 		}
 		if !boundaries[reference.value] {
 			return fmt.Errorf("jump target %d is not an instruction boundary at offset %d", reference.value, reference.offset)
 		}
 	}
-
 	return nil
 }

@@ -137,6 +137,16 @@ age = "Mio";
 			wantErr: "cannot assign string",
 		},
 		{
+			name: "局部变量赋值保持声明类型",
+			input: `
+moshi (hai) {
+    kaku local = 18;
+    local = "Mio";
+}
+`,
+			wantErr: "cannot assign string",
+		},
+		{
 			name: "函数外禁止返回",
 			input: `
 kaesu;

@@ -58,11 +58,10 @@ age;
 			wantOut:  "iie\n",
 		},
 		{
-			name:     "尚未支持的运行时功能",
+			name:     "执行 unit 用户函数",
 			command:  "run",
 			source:   `f(); waza f() -> unit { kaesu; }`,
-			wantCode: 1,
-			wantErr:  "user function call",
+			wantCode: 0,
 		},
 	}
 

@@ -306,18 +306,6 @@ waza maybe(flag: bool) -> int64 {
 `,
 			wantErr: "may exit without returning",
 		},
-		{
-			name: "嵌套函数使用独立返回类型",
-			input: `
-waza outer(a: int64) -> int64 {
-    waza inner(flag: bool) -> bool {
-        kaesu flag;
-    }
-
-    kaesu a;
-}
-`,
-		},
 	}
 
 	for _, tt := range tests {

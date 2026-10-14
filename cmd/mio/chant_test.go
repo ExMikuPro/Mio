@@ -69,19 +69,26 @@ func TestCLIChantSemanticErrors(t *testing.T) {
 }
 
 func TestCLIChantShadowedByFunction(t *testing.T) {
-	for _, source := range []string{
-		`chant(1); waza chant(n: int64) -> unit { kaesu; }`,
-		`waza chant(n: int64) -> int64 { kaesu n; } chant(1);`,
-		`moshi (hai) { chant(1); waza chant(n: int64) -> unit { kaesu; } }`,
+	for _, tt := range []struct {
+		source string
+		out    string
+	}{
+		{source: `chant(1); waza chant(n: int64) -> unit { kaesu; }`},
+		{source: `waza chant(n: int64) -> int64 { kaesu n; } chant(1);`, out: "1\n"},
 	} {
-		exit, out, stderr := runSourceCLI(t, "check", source)
+		exit, out, stderr := runSourceCLI(t, "check", tt.source)
 		if exit != 0 || stderr != "" {
 			t.Fatalf("shadowed function should pass semantic checks: %q", stderr)
 		}
-		exit, out, stderr = runSourceCLI(t, "run", source)
-		if exit != 1 || out != "" || !strings.Contains(stderr, "mio: compile: user function") || !strings.Contains(stderr, "not supported yet") {
+		exit, out, stderr = runSourceCLI(t, "run", tt.source)
+		if exit != 0 || out != tt.out || stderr != "" {
 			t.Fatalf("exit=%d stdout=%q stderr=%q", exit, out, stderr)
 		}
+	}
+
+	exit, out, stderr := runSourceCLI(t, "check", `moshi (hai) { waza chant(n: int64) -> unit { kaesu; } }`)
+	if exit != 1 || out != "" || !strings.Contains(stderr, "nested function declaration") {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", exit, out, stderr)
 	}
 }
 

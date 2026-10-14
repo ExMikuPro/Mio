@@ -162,26 +162,76 @@ age;
 	}
 }
 
-// 测试尚未支持的代码块局部变量
-func TestCompileLocalVariableNotYetSupported(t *testing.T) {
+// 测试代码块变量按声明符号分配独立槽位
+func TestCompileBlockVariableSlots(t *testing.T) {
+	input := `
+kaku value = 10;
+moshi (hai) {
+    kaku value = 20;
+    chant(value);
+}
+chant(value);
+`
+
+	got, err := compileGlobalSource(t, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := code.Instructions{
+		byte(code.OpConstant), 0, 0,
+		byte(code.OpSetGlobal), 0, 0,
+		byte(code.OpTrue),
+		byte(code.OpJumpIfFalse), 0, 20,
+		byte(code.OpConstant), 0, 1,
+		byte(code.OpSetGlobal), 0, 1,
+		byte(code.OpGetGlobal), 0, 1,
+		byte(code.OpChant),
+		byte(code.OpGetGlobal), 0, 0,
+		byte(code.OpChant),
+	}
+
+	if got.GlobalsCount != 2 {
+		t.Fatalf("global count: got %d, want 2", got.GlobalsCount)
+	}
+	if !bytes.Equal(got.Instructions, want) {
+		t.Fatalf(
+			"instructions:\ngot:\n%s\nwant:\n%s",
+			got.Instructions.String(),
+			want.String(),
+		)
+	}
+}
+
+// 测试不同分支中的同名变量使用不同槽位
+func TestCompileBranchVariableSlots(t *testing.T) {
 	input := `
 moshi (hai) {
-    kaku local = 10;
+    kaku value = 10;
+    chant(value);
+} sore {
+    kaku value = 20;
+    chant(value);
 }
 `
 
-	_, err := compileGlobalSource(t, input)
-	if err == nil {
-		t.Fatal("expected compiler error")
+	got, err := compileGlobalSource(t, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GlobalsCount != 2 {
+		t.Fatalf("global count: got %d, want 2", got.GlobalsCount)
 	}
 
-	if !strings.Contains(
-		err.Error(),
-		"block-local variable",
-	) {
-		t.Fatalf(
-			"expected local variable error, got %v",
-			err,
-		)
+	disassembly := got.Instructions.String()
+	for _, want := range []string{
+		"OpSetGlobal 0",
+		"OpGetGlobal 0",
+		"OpSetGlobal 1",
+		"OpGetGlobal 1",
+	} {
+		if !strings.Contains(disassembly, want) {
+			t.Fatalf("disassembly missing %q:\n%s", want, disassembly)
+		}
 	}
 }

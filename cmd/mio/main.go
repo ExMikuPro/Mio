@@ -265,8 +265,33 @@ func printDisassembly(out io.Writer, bytecode *compiler.Bytecode) error {
 	if _, err := fmt.Fprintln(out, "Instructions:"); err != nil {
 		return err
 	}
-	_, err := io.WriteString(out, bytecode.Instructions.String())
-	return err
+	if _, err := io.WriteString(out, bytecode.Instructions.String()); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "Functions (%d):\n", len(bytecode.Functions)); err != nil {
+		return err
+	}
+	for _, function := range bytecode.Functions {
+		returnKind := "unit"
+		if function.ReturnsValue {
+			returnKind = "value"
+		}
+		if _, err := fmt.Fprintf(
+			out,
+			"  Function %d %s params=%d locals=%d returns=%s:\n",
+			function.ID,
+			function.Name,
+			function.ParameterCount,
+			function.LocalCount,
+			returnKind,
+		); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(out, function.Instructions.String()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // parseAndCheckFile 完成源码读取与静态语义检查

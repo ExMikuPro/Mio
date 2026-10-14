@@ -52,20 +52,17 @@ func TestCompileChant(t *testing.T) {
 	}
 }
 
-func TestCompileUserFunctionsUnsupported(t *testing.T) {
-	for _, source := range []string{
-		`chant(1); waza chant(n: int64) -> unit { kaesu; }`,
-		`chant(1); waza chant(n: int64) -> int64 { kaesu n; }`,
-		`waza chant(n: int64) -> unit { kaesu; } chant(1);`,
-		`moshi (hai) { chant(1); waza chant(n: int64) -> unit { kaesu; } }`,
-		`f(); waza f() -> unit { kaesu; }`,
-	} {
-		t.Run(source, func(t *testing.T) {
-			_, err := compileGlobalSource(t, source)
-			if err == nil || !strings.Contains(err.Error(), "user function") || !strings.Contains(err.Error(), "not supported yet") {
-				t.Fatalf("expected explicit unsupported function error, got %v", err)
-			}
-		})
+func TestCompileUserFunctionCall(t *testing.T) {
+	bytecode, err := compileGlobalSource(t, `f(); waza f() -> unit { kaesu; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bytecode.Functions) != 1 || bytecode.Functions[0].ID != 0 {
+		t.Fatalf("functions: %#v", bytecode.Functions)
+	}
+	want := code.Instructions{byte(code.OpCall), 0, 0}
+	if !bytes.Equal(bytecode.Instructions, want) {
+		t.Fatalf("instructions:\n%s", bytecode.Instructions.String())
 	}
 }
 

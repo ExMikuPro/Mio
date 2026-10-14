@@ -611,7 +611,7 @@ waza second() {
 `,
 		},
 		{
-			name: "代码块内的函数预声明",
+			name: "拒绝代码块内函数声明",
 			input: `
 moshi (hai) {
     inner();
@@ -621,6 +621,7 @@ moshi (hai) {
     }
 }
 `,
+			wantErr: "nested function declaration",
 		},
 		{
 			name: "局部函数不能在外层访问",
@@ -633,7 +634,7 @@ moshi (hai) {
 
 inner();
 `,
-			wantErr: `undefined identifier "inner"`,
+			wantErr: `nested function declaration`,
 		},
 		{
 			name: "变量仍需先声明",

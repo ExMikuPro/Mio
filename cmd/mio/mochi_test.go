@@ -42,6 +42,19 @@ func TestCLIBuildAndExec(t *testing.T) {
 		{name: "全局变量", source: `kaku n = 40; n = n + 2; n;`},
 		{name: "条件跳转", source: `kaku n = 1; moshi (n < 2) { n = 7; } sore { n = 9; } n;`},
 		{name: "chant", source: `chant("Hello, Mio!");`},
+		{name: "代码块局部变量", source: `kaku value = 10; moshi (hai) { kaku value = 20; chant(value); } chant(value);`},
+		{name: "递归与相互递归", source: `
+waza factorial(n: int64) -> int64 {
+    moshi (n <= 1) { kaesu 1; } sore { kaesu n * factorial(n - 1); }
+}
+waza even(n: int64) -> bool {
+    moshi (n == 0) { kaesu hai; } sore { kaesu odd(n - 1); }
+}
+waza odd(n: int64) -> bool {
+    moshi (n == 0) { kaesu iie; } sore { kaesu even(n - 1); }
+}
+chant(factorial(6)); chant(even(10));
+`},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +129,77 @@ func TestCLIDisasm(t *testing.T) {
 	}
 	if strings.Contains(stdout, "line\n\t\"\\\n") {
 		t.Fatalf("disasm executed program or emitted an unescaped string: %q", stdout)
+	}
+}
+
+// 测试局部变量字节码的构建、解码和反汇编
+func TestCLILocalVariableMochiAndDisassembly(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := writeSourceFile(t, directory, "local.mio", `
+kaku value = 10;
+moshi (hai) {
+    kaku value = 20;
+    chant(value);
+}
+chant(value);
+`)
+	mochiPath := filepath.Join(directory, "local.mochi")
+
+	if exitCode, stdout, stderr := runFileCLI("build", sourcePath); exitCode != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("build: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	if exitCode, stdout, stderr := runFileCLI("exec", mochiPath); exitCode != 0 || stdout != "20\n10\n" || stderr != "" {
+		t.Fatalf("exec: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+
+	exitCode, stdout, stderr := runFileCLI("disasm", mochiPath)
+	if exitCode != 0 || stderr != "" {
+		t.Fatalf("disasm: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	for _, want := range []string{
+		"Globals: 2\n",
+		"OpSetGlobal 0",
+		"OpSetGlobal 1",
+		"OpGetGlobal 1",
+		"OpGetGlobal 0",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// 测试用户函数的 build、exec 和 disasm 链路
+func TestCLIFunctionBuildExecAndDisasm(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := writeSourceFile(t, directory, "function.mio", `
+waza add(a: int64, b: int64) -> int64 {
+    kaesu a + b;
+}
+chant(add(10, 20));
+`)
+	mochiPath := filepath.Join(directory, "function.mochi")
+	if exitCode, stdout, stderr := runFileCLI("build", sourcePath); exitCode != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("build: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	if exitCode, stdout, stderr := runFileCLI("exec", mochiPath); exitCode != 0 || stdout != "30\n" || stderr != "" {
+		t.Fatalf("exec: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	exitCode, stdout, stderr := runFileCLI("disasm", mochiPath)
+	if exitCode != 0 || stderr != "" {
+		t.Fatalf("disasm: exit=%d stdout=%q stderr=%q", exitCode, stdout, stderr)
+	}
+	for _, want := range []string{
+		"Functions (1):",
+		"Function 0 add params=2 locals=2 returns=value:",
+		"OpCall 0",
+		"OpGetLocal 0",
+		"OpGetLocal 1",
+		"OpReturnValue",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
 	}
 }
 

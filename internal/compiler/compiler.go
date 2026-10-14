@@ -1,11 +1,11 @@
 package compiler
 
 import (
-	"Mio/internal/resolver"
 	"fmt"
 
 	"Mio/internal/ast"
 	"Mio/internal/code"
+	"Mio/internal/resolver"
 	"Mio/internal/token"
 	"Mio/internal/value"
 )
@@ -15,6 +15,17 @@ type Bytecode struct {
 	Instructions code.Instructions
 	Constants    []value.Value
 	GlobalsCount int
+	Functions    []CompiledFunction
+}
+
+// CompiledFunction 保存独立函数指令流及栈帧元数据
+type CompiledFunction struct {
+	ID             int
+	Name           string
+	Instructions   code.Instructions
+	ParameterCount int
+	LocalCount     int
+	ReturnsValue   bool
 }
 
 // Compiler 将 AST 编译为字节码
@@ -22,17 +33,24 @@ type Compiler struct {
 	instructions code.Instructions
 	constants    []value.Value
 
-	resolver   *resolver.Resolver
-	globals    map[resolver.Symbol]int
-	blockDepth int
+	resolver *resolver.Resolver
+	globals  map[resolver.Symbol]int
+	locals   map[resolver.Symbol]int
+
+	functionIDs     map[resolver.Symbol]int
+	functionReturns map[resolver.Symbol]bool
+	functions       []CompiledFunction
+	currentFunction *ast.FunctionStatement
 }
 
 // New 创建字节码编译器
 func New() *Compiler {
 	return &Compiler{
-		instructions: make(code.Instructions, 0),
-		constants:    make([]value.Value, 0),
-		globals:      make(map[resolver.Symbol]int),
+		instructions:    make(code.Instructions, 0),
+		constants:       make([]value.Value, 0),
+		globals:         make(map[resolver.Symbol]int),
+		functionIDs:     make(map[resolver.Symbol]int),
+		functionReturns: make(map[resolver.Symbol]bool),
 	}
 }
 
@@ -49,6 +67,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	// 编译整个程序
 	case *ast.Program:
+		if err := c.registerFunctions(n); err != nil {
+			return err
+		}
 		for _, stmt := range n.Statements {
 			if err := c.Compile(stmt); err != nil {
 				return err
@@ -65,7 +86,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 		return c.compileCall(n)
 
 	case *ast.FunctionStatement:
-		return fmt.Errorf("user function declaration %q is not supported yet", n.Name.Name)
+		return c.compileFunction(n)
+
+	case *ast.ReturnStatement:
+		if c.currentFunction == nil {
+			return fmt.Errorf("kaesu outside function")
+		}
+		if n.Value == nil {
+			return c.emit(code.OpReturn)
+		}
+		if err := c.Compile(n.Value); err != nil {
+			return err
+		}
+		return c.emit(code.OpReturnValue)
 
 	// 编译整数字面量
 	case *ast.IntegerLiteral:
@@ -191,14 +224,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		// 编译代码块中的语句
 	case *ast.BlockStatement:
-		// 进入代码块
-		c.blockDepth++
-
-		// 离开代码块时恢复深度
-		defer func() {
-			c.blockDepth--
-		}()
-
 		for _, stmt := range n.Statements {
 			if err := c.Compile(stmt); err != nil {
 				return err
@@ -211,30 +236,29 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.IfStatement:
 		return c.compileIfStatement(n)
 
-		// 编译全局变量声明
+	// 编译变量声明
 	case *ast.LetStatement:
-		// 当前阶段不支持代码块内的局部变量声明
-		if c.blockDepth > 0 {
-			return fmt.Errorf(
-				"block-local variable %q is not supported yet",
-				n.Name.Name,
-			)
-		}
-
 		symbol, err := c.boundVariable(n.Name)
 		if err != nil {
 			return err
 		}
 
-		if _, exists := c.globals[symbol]; exists {
+		slots := c.globals
+		op := code.OpSetGlobal
+		if c.currentFunction != nil {
+			slots = c.locals
+			op = code.OpSetLocal
+		}
+
+		if _, exists := slots[symbol]; exists {
 			return fmt.Errorf(
 				"variable %q already compiled",
 				n.Name.Name,
 			)
 		}
 
-		if len(c.globals) >= 1<<16 {
-			return fmt.Errorf("global variable slot overflow")
+		if len(slots) >= 1<<16 {
+			return fmt.Errorf("variable slot overflow")
 		}
 
 		// 编译变量初始化表达式
@@ -242,29 +266,32 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		// 分配并保存全局变量槽位
-		index := len(c.globals)
+		// 为声明符号分配独立物理槽位
+		index := len(slots)
 
-		if err := c.emit(code.OpSetGlobal, index); err != nil {
+		if err := c.emit(op, index); err != nil {
 			return err
 		}
 
-		c.globals[symbol] = index
+		slots[symbol] = index
 
 		return nil
 
 	// 编译变量引用
 	case *ast.Identifier:
-		index, err := c.globalSlot(n)
+		index, local, err := c.variableSlot(n)
 		if err != nil {
 			return err
 		}
 
+		if local {
+			return c.emit(code.OpGetLocal, index)
+		}
 		return c.emit(code.OpGetGlobal, index)
 
 		// 编译变量赋值
 	case *ast.AssignStatement:
-		index, err := c.globalSlot(n.Name)
+		index, local, err := c.variableSlot(n.Name)
 		if err != nil {
 			return err
 		}
@@ -275,6 +302,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		// 将新值写回原变量槽位
+		if local {
+			return c.emit(code.OpSetLocal, index)
+		}
 		return c.emit(code.OpSetGlobal, index)
 
 	default:
@@ -315,6 +345,11 @@ func (c *Compiler) emit(
 
 // Bytecode 获取当前编译结果
 func (c *Compiler) Bytecode() *Bytecode {
+	functions := make([]CompiledFunction, len(c.functions))
+	for index, function := range c.functions {
+		functions[index] = function
+		functions[index].Instructions = append(code.Instructions(nil), function.Instructions...)
+	}
 	return &Bytecode{
 		Instructions: append(
 			code.Instructions(nil),
@@ -325,6 +360,7 @@ func (c *Compiler) Bytecode() *Bytecode {
 			c.constants...,
 		),
 		GlobalsCount: len(c.globals),
+		Functions:    functions,
 	}
 }
 
@@ -507,6 +543,106 @@ func (c *Compiler) compileLogicalExpression(
 	}
 }
 
+// registerFunctions 为顶层函数分配稳定的 FunctionID
+func (c *Compiler) registerFunctions(program *ast.Program) error {
+	if len(c.functionIDs) != 0 || len(c.functions) != 0 {
+		return fmt.Errorf("functions already registered")
+	}
+	hasFunctions := false
+	for _, stmt := range program.Statements {
+		if _, ok := stmt.(*ast.FunctionStatement); ok {
+			hasFunctions = true
+			break
+		}
+	}
+	if !hasFunctions {
+		return nil
+	}
+	if c.resolver == nil {
+		return fmt.Errorf("function compilation requires a name resolver")
+	}
+
+	for _, stmt := range program.Statements {
+		fn, ok := stmt.(*ast.FunctionStatement)
+		if !ok {
+			continue
+		}
+		if len(c.functions) >= 1<<16 {
+			return fmt.Errorf("function count overflow")
+		}
+
+		symbol, ok := c.resolver.BindingOf(fn.Name)
+		if !ok || symbol.Kind != resolver.SymbolFunction {
+			return fmt.Errorf("missing function binding for %q", fn.Name.Name)
+		}
+		id := len(c.functions)
+		c.functionIDs[symbol] = id
+		returnsValue := fn.ReturnType != nil && fn.ReturnType.Name != "unit"
+		c.functionReturns[symbol] = returnsValue
+		c.functions = append(c.functions, CompiledFunction{
+			ID:             id,
+			Name:           fn.Name.Name,
+			ParameterCount: len(fn.Parameters),
+			ReturnsValue:   returnsValue,
+		})
+	}
+
+	return nil
+}
+
+// compileFunction 编译独立函数指令流
+func (c *Compiler) compileFunction(fn *ast.FunctionStatement) error {
+	if c.currentFunction != nil {
+		return fmt.Errorf("nested function declaration %q is not supported", fn.Name.Name)
+	}
+	symbol, ok := c.resolver.BindingOf(fn.Name)
+	if !ok {
+		return fmt.Errorf("missing function binding for %q", fn.Name.Name)
+	}
+	id, ok := c.functionIDs[symbol]
+	if !ok {
+		return fmt.Errorf("function %q has no FunctionID", fn.Name.Name)
+	}
+
+	outerInstructions := c.instructions
+	outerLocals := c.locals
+	c.instructions = make(code.Instructions, 0)
+	c.locals = make(map[resolver.Symbol]int)
+	c.currentFunction = fn
+	defer func() {
+		c.instructions = outerInstructions
+		c.locals = outerLocals
+		c.currentFunction = nil
+	}()
+
+	for index, parameter := range fn.Parameters {
+		parameterSymbol, ok := c.resolver.BindingOf(parameter)
+		if !ok || parameterSymbol.Kind != resolver.SymbolParameter {
+			return fmt.Errorf("missing parameter binding for %q", parameter.Name)
+		}
+		c.locals[parameterSymbol] = index
+	}
+
+	if err := c.Compile(fn.Body); err != nil {
+		return err
+	}
+	if !c.functionReturns[symbol] {
+		if err := c.emit(code.OpReturn); err != nil {
+			return err
+		}
+	}
+
+	c.functions[id] = CompiledFunction{
+		ID:             id,
+		Name:           fn.Name.Name,
+		Instructions:   append(code.Instructions(nil), c.instructions...),
+		ParameterCount: len(fn.Parameters),
+		LocalCount:     len(c.locals),
+		ReturnsValue:   c.functionReturns[symbol],
+	}
+	return nil
+}
+
 // boundVariable 获取变量标识符绑定的符号
 func (c *Compiler) boundVariable(
 	ident *ast.Identifier,
@@ -531,9 +667,10 @@ func (c *Compiler) boundVariable(
 		)
 	}
 
-	if symbol.Kind != resolver.SymbolVariable {
+	if symbol.Kind != resolver.SymbolVariable &&
+		symbol.Kind != resolver.SymbolParameter {
 		return resolver.Symbol{}, fmt.Errorf(
-			"%q is not a variable symbol",
+			"%q is not a variable or parameter symbol",
 			ident.Name,
 		)
 	}
@@ -541,22 +678,26 @@ func (c *Compiler) boundVariable(
 	return symbol, nil
 }
 
-// globalSlot 查询变量对应的全局槽位
-func (c *Compiler) globalSlot(
+// variableSlot 查询变量符号对应的物理槽位
+func (c *Compiler) variableSlot(
 	ident *ast.Identifier,
-) (int, error) {
+) (int, bool, error) {
 	symbol, err := c.boundVariable(ident)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	index, ok := c.globals[symbol]
-	if !ok {
-		return 0, fmt.Errorf(
-			"variable %q has no allocated global slot",
-			ident.Name,
-		)
+	if c.currentFunction != nil {
+		if index, ok := c.locals[symbol]; ok {
+			return index, true, nil
+		}
+	}
+	if index, ok := c.globals[symbol]; ok {
+		return index, false, nil
 	}
 
-	return index, nil
+	return 0, false, fmt.Errorf(
+		"variable %q has no allocated slot",
+		ident.Name,
+	)
 }

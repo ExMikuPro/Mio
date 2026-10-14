@@ -36,7 +36,7 @@ func New() *Resolver {
 
 // 解析程序中的名称引用
 func (r *Resolver) ResolveProgram(program *ast.Program) error {
-	return r.resolveStatements(program.Statements)
+	return r.resolveStatements(program.Statements, true)
 }
 
 // 解析语句中的符号定义与引用
@@ -229,7 +229,7 @@ func (r *Resolver) resolveBlock(block *ast.BlockStatement) error {
 		r.scope = parent
 	}()
 
-	return r.resolveStatements(block.Statements)
+	return r.resolveStatements(block.Statements, false)
 }
 
 func (r *Resolver) resolveFunctionStatement(fn *ast.FunctionStatement) error {
@@ -275,17 +275,26 @@ func (r *Resolver) resolveFunctionStatement(fn *ast.FunctionStatement) error {
 	}
 
 	// 解析函数体中的语句
-	return r.resolveStatements(fn.Body.Statements)
+	return r.resolveStatements(fn.Body.Statements, false)
 }
 
 // 解析统一作用域中的语句
-func (r *Resolver) resolveStatements(statements []ast.Statement) error {
+func (r *Resolver) resolveStatements(statements []ast.Statement, allowFunctions bool) error {
 	// 预声明函数名称
 	// 预声明当前作用域中的函数
 	for _, stmt := range statements {
 		fn, ok := stmt.(*ast.FunctionStatement)
 		if !ok {
 			continue
+		}
+		if !allowFunctions {
+			pos := fn.Name.Span().Start
+			return fmt.Errorf(
+				"nested function declaration %q is not supported at %d:%d",
+				fn.Name.Name,
+				pos.Line,
+				pos.Column,
+			)
 		}
 
 		// 构造函数符号

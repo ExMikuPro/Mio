@@ -51,18 +51,9 @@ func TestRoundTripMixedConstantsGlobalsAndInstructions(t *testing.T) {
 	}
 }
 
-// 测试 Mochi v1 的精确编码布局
-func TestExactV1Encoding(t *testing.T) {
-	bytecode := &compiler.Bytecode{
-		Constants: []value.Value{value.NewInt(-2), value.NewString("猫")},
-		Instructions: code.Instructions{
-			byte(code.OpConstant), 0, 0,
-			byte(code.OpPop),
-		},
-		GlobalsCount: 1,
-	}
-
-	want := []byte{
+// 测试 Mochi v1 的精确布局仍可解码
+func TestDecodeExactV1Encoding(t *testing.T) {
+	data := []byte{
 		'M', 'O', 'C', 'H', 'I',
 		0, 1,
 		0, 0, 0, 2,
@@ -75,13 +66,15 @@ func TestExactV1Encoding(t *testing.T) {
 		0, 0, 0, 4,
 		byte(code.OpConstant), 0, 0, byte(code.OpPop),
 	}
-
-	var buffer bytes.Buffer
-	if err := Encode(&buffer, bytecode); err != nil {
+	got, err := Decode(bytes.NewReader(data))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(buffer.Bytes(), want) {
-		t.Fatalf("encoded bytes:\n got % x\nwant % x", buffer.Bytes(), want)
+	if got.GlobalsCount != 1 || len(got.Constants) != 2 || len(got.Functions) != 0 {
+		t.Fatalf("decoded v1 bytecode: %#v", got)
+	}
+	if result := runResult(t, got); result != value.NewInt(-2) {
+		t.Fatalf("v1 result = %v, want -2", result)
 	}
 }
 
@@ -116,8 +109,8 @@ func TestRoundTripEmptyProgram(t *testing.T) {
 	if len(got.Constants) != 0 || len(got.Instructions) != 0 || got.GlobalsCount != 0 {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
-	if len(encoded) != 19 {
-		t.Fatalf("empty file length = %d, want 19", len(encoded))
+	if len(encoded) != 23 {
+		t.Fatalf("empty file length = %d, want 23", len(encoded))
 	}
 }
 
@@ -158,6 +151,36 @@ func TestDecodedBehaviorMatchesOriginal(t *testing.T) {
 	decodedResult := runResult(t, decoded)
 	if originalResult != decodedResult || decodedResult != value.NewInt(42) {
 		t.Fatalf("original result %v, decoded result %v", originalResult, decodedResult)
+	}
+}
+
+// 测试 Mochi v2 函数表往返编码
+func TestRoundTripV2Functions(t *testing.T) {
+	bytecode := &compiler.Bytecode{
+		Constants: []value.Value{value.NewInt(42)},
+		Instructions: joinInstructions(t,
+			mustInstruction(t, code.OpCall, 0),
+			mustInstruction(t, code.OpPop),
+		),
+		Functions: []compiler.CompiledFunction{{
+			ID:             0,
+			Name:           "answer",
+			Instructions:   joinInstructions(t, mustInstruction(t, code.OpConstant, 0), mustInstruction(t, code.OpReturnValue)),
+			ParameterCount: 0,
+			LocalCount:     0,
+			ReturnsValue:   true,
+		}},
+	}
+
+	got, encoded := roundTrip(t, bytecode)
+	if binary.BigEndian.Uint16(encoded[5:7]) != Version {
+		t.Fatalf("encoded version = %d, want %d", binary.BigEndian.Uint16(encoded[5:7]), Version)
+	}
+	if !reflect.DeepEqual(got, bytecode) {
+		t.Fatalf("decoded bytecode:\n got %#v\nwant %#v", got, bytecode)
+	}
+	if result := runResult(t, got); result != value.NewInt(42) {
+		t.Fatalf("result = %v, want 42", result)
 	}
 }
 
@@ -230,6 +253,11 @@ func TestEncodeRejectsUnsupportedConstantsAndInvalidStructure(t *testing.T) {
 		{name: "nil constant", bytecode: &compiler.Bytecode{Constants: []value.Value{value.NewNil()}}, want: "unsupported kind"},
 		{name: "negative globals", bytecode: &compiler.Bytecode{GlobalsCount: -1}, want: "global slot count"},
 		{name: "invalid opcode", bytecode: &compiler.Bytecode{Instructions: []byte{0xff}}, want: "unknown opcode"},
+		{name: "call function index", bytecode: &compiler.Bytecode{Instructions: mustInstruction(t, code.OpCall, 0)}, want: "FunctionID"},
+		{name: "local outside function", bytecode: &compiler.Bytecode{Instructions: mustInstruction(t, code.OpGetLocal, 0)}, want: "outside function"},
+		{name: "non-canonical function ID", bytecode: &compiler.Bytecode{Functions: []compiler.CompiledFunction{{ID: 1, Name: "bad"}}}, want: "FunctionID"},
+		{name: "parameter count exceeds locals", bytecode: &compiler.Bytecode{Functions: []compiler.CompiledFunction{{ID: 0, Name: "bad", ParameterCount: 1}}}, want: "local count"},
+		{name: "unit return value", bytecode: &compiler.Bytecode{Functions: []compiler.CompiledFunction{{ID: 0, Name: "bad", Instructions: mustInstruction(t, code.OpReturnValue)}}}, want: "unit function"},
 	}
 
 	for _, tt := range tests {
@@ -298,7 +326,7 @@ func runResult(t *testing.T, bytecode *compiler.Bytecode) value.Value {
 
 func rawFile(constantCount uint32, constantData []byte, globals uint32, instructions []byte) []byte {
 	data := append([]byte(nil), fileSignature...)
-	data = append(data, 0, byte(Version))
+	data = append(data, 0, byte(VersionV1))
 	data = append(data, u32(constantCount)...)
 	data = append(data, constantData...)
 	data = append(data, u32(globals)...)
@@ -309,7 +337,7 @@ func rawFile(constantCount uint32, constantData []byte, globals uint32, instruct
 
 func headerWithCount(count uint32) []byte {
 	data := append([]byte(nil), fileSignature...)
-	data = append(data, 0, byte(Version))
+	data = append(data, 0, byte(VersionV1))
 	return append(data, u32(count)...)
 }
 
@@ -321,7 +349,7 @@ func rawFileWithInstructionLength(length uint32) []byte {
 
 func truncatedStringFile(length uint32, partial []byte) []byte {
 	data := append([]byte(nil), fileSignature...)
-	data = append(data, 0, byte(Version))
+	data = append(data, 0, byte(VersionV1))
 	data = append(data, u32(1)...)
 	data = append(data, constantTagString)
 	data = append(data, u32(length)...)

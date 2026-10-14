@@ -14,9 +14,17 @@ func (c *Compiler) compileExpressionStatement(expr ast.Expression) error {
 	case *ast.GroupedExpression:
 		return c.compileExpressionStatement(n.Expr)
 	case *ast.CallExpression:
-		// 当前唯一可编译的调用是返回 unit 的内置 chant。
-		// 增加其他调用时，必须按其返回类型决定是否生成 OpPop。
-		return c.compileCall(n)
+		if err := c.compileCall(n); err != nil {
+			return err
+		}
+		returnsValue, err := c.callReturnsValue(n)
+		if err != nil {
+			return err
+		}
+		if returnsValue {
+			return c.emit(code.OpPop)
+		}
+		return nil
 	default:
 		if err := c.Compile(expr); err != nil {
 			return err
@@ -25,7 +33,7 @@ func (c *Compiler) compileExpressionStatement(expr ast.Expression) error {
 	}
 }
 
-// compileCall 只编译 Resolver 绑定到内置符号的调用。
+// compileCall 编译 Resolver 绑定的内置函数或用户函数调用。
 // 与其他表达式一样，实参类型由编译前的语义检查保证。
 func (c *Compiler) compileCall(call *ast.CallExpression) error {
 	callee, ok := call.Function.(*ast.Identifier)
@@ -40,7 +48,20 @@ func (c *Compiler) compileCall(call *ast.CallExpression) error {
 		return fmt.Errorf("missing symbol binding for function %q", callee.Name)
 	}
 	if symbol.Kind == resolver.SymbolFunction {
-		return fmt.Errorf("user function call %q is not supported yet", symbol.Name)
+		id, ok := c.functionIDs[symbol]
+		if !ok {
+			return fmt.Errorf("function %q has no FunctionID", symbol.Name)
+		}
+		parameterCount := c.functions[id].ParameterCount
+		if len(call.Arguments) != parameterCount {
+			return fmt.Errorf("function %q expects %d arguments, got %d", symbol.Name, parameterCount, len(call.Arguments))
+		}
+		for _, argument := range call.Arguments {
+			if err := c.Compile(argument); err != nil {
+				return err
+			}
+		}
+		return c.emit(code.OpCall, id)
 	}
 	if symbol.Kind != resolver.SymbolBuiltin {
 		return fmt.Errorf("cannot call %s %q", symbol.Kind, symbol.Name)
@@ -55,4 +76,24 @@ func (c *Compiler) compileCall(call *ast.CallExpression) error {
 		return err
 	}
 	return c.emit(code.OpChant)
+}
+
+// callReturnsValue 判断调用是否产生运行时值
+func (c *Compiler) callReturnsValue(call *ast.CallExpression) (bool, error) {
+	callee, ok := call.Function.(*ast.Identifier)
+	if !ok || c.resolver == nil {
+		return false, fmt.Errorf("call target must be a resolved function name")
+	}
+	symbol, ok := c.resolver.BindingOf(callee)
+	if !ok {
+		return false, fmt.Errorf("missing symbol binding for function %q", callee.Name)
+	}
+	if symbol.Kind == resolver.SymbolBuiltin {
+		return false, nil
+	}
+	returnsValue, ok := c.functionReturns[symbol]
+	if !ok {
+		return false, fmt.Errorf("function %q has no return metadata", callee.Name)
+	}
+	return returnsValue, nil
 }
