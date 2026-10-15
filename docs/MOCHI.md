@@ -1,22 +1,22 @@
-# Mochi v1 至 v11 字节码格式
+# Mochi v1 至 v14 字节码格式
 
 Mochi 是 Mio 的二进制字节码容器。所有多字节整数使用大端字节序，文件不包含填充、校验和或尾随数据。
 
-Mochi v11 为固定宽度整数增加紧凑常量标签与显式转换指令。解码器和 VM 可以读取 Mochi v1 至 v11。
+Mochi v14 增加受限数据复制转换指令。解码器和 VM 可以读取 Mochi v1 至 v14。
 
 ## 公共头部和主指令流
 
 | 字段 | 大小 | 说明 |
 | --- | ---: | --- |
 | 签名 | 5 字节 | ASCII `MOCHI` |
-| 版本 | `uint16` | `1` 至 `11` |
+| 版本 | `uint16` | `1` 至 `14` |
 | 常量数量 | `uint32` | 后续常量条目数 |
 | 常量表 | 可变 | 见下节 |
 | 全局槽位数量 | `uint32` | VM 启动时分配的槽位数 |
 | 主指令长度 | `uint32` | 指令字节数 |
 | 主指令 | 可变 | 编码后的 Opcode 与操作数 |
 
-Mochi v1 在主指令后结束。Mochi v2 至 v11 继续写入函数表。
+Mochi v1 在主指令后结束。Mochi v2 至 v14 继续写入函数表。
 
 ## 常量表
 
@@ -34,7 +34,7 @@ Mochi v1 在主指令后结束。Mochi v2 至 v11 继续写入函数表。
 
 布尔值和 `mu` 不进入常量表，分别由 `OpTrue`、`OpFalse` 和 `OpNil` 产生。
 
-## Mochi v2 至 v11 函数表
+## Mochi v2 至 v14 函数表
 
 主指令后先写入 `uint32` 函数数量，每个函数依次包含：
 
@@ -111,6 +111,16 @@ Opcode 占 1 字节。表中的 `u16` 操作数使用大端字节序，`u8` 操�
 | 53 | `OpFloat64ToFloat32` | 无，Mochi v10 起允许 |
 | 54 | `OpMath` | 原语编号 `u8`、实参数量 `u8`，Mochi v10 起允许 |
 | 55 | `OpIntegerConvert` | 目标整数类型编号 `u8`，Mochi v11 起允许 |
+| 56 | `OpArrayTyped` | 元素数量 `u16`、元素描述符 `u8`，Mochi v12 起允许 |
+| 57 | `OpArrayMake` | 元素描述符 `u8`，Mochi v12 起允许 |
+| 58 | `OpArrayWithCapacity` | 元素描述符 `u8`，Mochi v12 起允许 |
+| 59 | `OpArrayPush` | 无，Mochi v12 起允许 |
+| 60 | `OpArrayCapacity` | 无，Mochi v12 起允许 |
+| 61 | `OpArrayReserve` | 无，Mochi v12 起允许 |
+| 62 | `OpArrayClone` | 无，Mochi v12 起允许 |
+| 63 | `OpArrayTruncate` | 无，Mochi v13 起允许 |
+| 64 | `OpArrayAppendAll` | 无，Mochi v13 起允许 |
+| 65 | `OpDataConvert` | 数据转换编号 `u8`，Mochi v14 起允许 |
 
 Opcode 编号是 v1/v2 兼容面的一部分。未知 Opcode、截断操作数和跳入操作数字节的目标都会被拒绝。
 
@@ -141,7 +151,11 @@ Opcode 编号是 v1/v2 兼容面的一部分。未知 Opcode、截断操作数�
 - v8 只追加 Opcode 36 至 45，二进制布局与 v7 一致。v1 至 v7 解码严格拒绝这些 Opcode。
 - v9 在函数项中加入闭包捕获元数据，并追加 Opcode 46 至 49。
 - v10 新增 binary32 常量标签 `4`，并追加 Opcode 50 至 54。旧版本严格拒绝这些标签和指令。
-- 不使用新能力的既有程序保持原二进制语义；解码器继续接受合法 v1 至 v9。
+- v11 增加固定宽度整数常量标签与 `OpIntegerConvert`。
+- v12 增加 Opcode 56 至 62，用于通用动态数组操作。
+- v13 增加 Opcode 63 和 64，用于数组截断与批量追加。
+- v14 增加 `OpDataConvert`。当前只允许 `string` 与紧凑 `[]uint8` 的复制转换。
+- 不使用新能力的既有程序保持原二进制语义；解码器继续接受合法 v1 至 v13。
 - 格式没有校验和或签名。加载不可信文件时必须经过 `mochi.Decode`，不能绕过验证直接执行原始字节。
 
 后续格式若需要不兼容变更，应使用新的版本号，不能改变已有字段或 Opcode 编号。

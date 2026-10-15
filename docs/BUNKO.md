@@ -48,3 +48,17 @@ yobu "kiso/math";
 `kiso/math` 已提供比较、绝对值、整数数学、浮点数学与数学常量 API，具体语义见 [`bunko/kiso/math/README.md`](../bunko/kiso/math/README.md)。
 
 `kiso/bytes` 已提供 `[]uint8` 的比较、查找、前后缀与原地复制、填充 API，具体语义和动态数组前置限制见 [`bunko/kiso/bytes/README.md`](../bunko/kiso/bytes/README.md)。
+
+`kiso/string` 已提供 UTF-8 字节转换、码点计数、查找、拼接与 `StringBuilder`，具体语义见 [`bunko/kiso/string/README.md`](../bunko/kiso/string/README.md)。
+
+`kiso/convert` 已提供严格 ASCII 十进制整数、IEEE 754 浮点数转换和 Mio 布尔文本转换，具体语义见 [`bunko/kiso/convert/README.md`](../bunko/kiso/convert/README.md)。
+
+`kiso/io` 已提供同步 `Reader`、`Writer`、部分读写结果和流式复制，具体语义见 [`bunko/kiso/io/README.md`](../bunko/kiso/io/README.md)。
+
+`kiso/fs` 组合 MMA Resource Handle、宿主系统调用与 `kiso/io`，提供同步文件和目录基础能力，具体语义见 [`bunko/kiso/fs/README.md`](../bunko/kiso/fs/README.md)。只有显式导入文件系统的程序才会保留原生绑定；未使用模块不会初始化资源表槽位。
+
+`kiso/path` 使用纯 Mio 实现 `/` 分隔的逻辑路径处理，具体平台边界见 [`bunko/kiso/path/README.md`](../bunko/kiso/path/README.md)。
+
+`kiso/encoding/binary` 使用纯 Mio 实现固定宽度大小端整数和严格 LEB128，具体编码规范见 [`bunko/kiso/encoding/binary/README.md`](../bunko/kiso/encoding/binary/README.md)。
+
+随附原生模块只负责宿主能力边界，不是可由用户直接依赖的稳定 Bunko API。v1 到 v2 保证公开 Mio 源码 API 的兼容，不保证 Go 原生适配实现保持不变。
