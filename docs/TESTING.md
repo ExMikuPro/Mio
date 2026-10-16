@@ -1,6 +1,6 @@
 # Mio 测试
 
-Mio v0.1 使用与 Go 类似的同目录测试约定。文件名以 `_test.mio` 结尾时，它属于所在目录的同一个包，但只由 `mio test` 加载。普通 `check`、`run`、`build` 和包导入会忽略这些文件；直接对测试文件执行普通命令会提示改用 `mio test`。
+Mio v1.0 Beta 使用与 Go 类似的同目录测试约定。文件名以 `_test.mio` 结尾时，它属于所在目录的同一个包，但只由 `mio test` 加载。普通 `check`、`run`、`build` 和包导入会忽略这些文件；直接对测试文件执行普通命令会提示改用 `mio test`。
 
 ## 测试函数
 
@@ -58,14 +58,17 @@ CI 可使用 `mio test ./... --format=json`。输出顶层包含稳定的 `schem
 # Fast：日常开发
 go test -short ./... -count=1
 
-# Full：完整确定性回归
-go test ./... -count=1
+# Full：完整确定性回归，自举单独验收
+go test -skip='^TestBootstrapSelfCompilation$' ./... -count=1 -timeout=35m
 
 # Stress：扩大固定种子的随机样本和大输入规模
-MIO_STRESS_TEST=1 go test ./... -count=1
+MIO_STRESS_TEST=1 go test -skip='^TestBootstrapSelfCompilation$' ./... -count=1 -timeout=50m
+
+# 发布候选：A → B → C → D 连续自编译
+go test ./selfhost/bootstrap -run '^TestBootstrapSelfCompilation$' -count=1 -v -timeout=80m
 ```
 
-Fast 保留普通单元测试、浮点与整数边界、最短浮点格式化回归、Unicode 错误、Mochi v1–v14、VM、Compiler、MMA、testing 和 i18n；它只跳过大规模随机浮点验证、超长浮点输入、大型 UTF-8 数据和大型文本。Full 运行全部确定性正确性测试，随机测试使用固定种子。Stress 在 Full 基础上扩大随机浮点位模式、随机十进制输入、UTF-8 数据和文本规模。
+Fast 保留普通单元测试、浮点与整数边界、最短浮点格式化回归、Unicode 错误、Mochi v1–v14、VM、Compiler、MMA、testing 和 i18n；它只跳过大规模随机浮点验证、超长浮点输入、大型 UTF-8 数据和大型文本。Full 运行除昂贵自举外的全部确定性正确性测试，随机测试使用固定种子。Stress 在 Full 基础上扩大随机浮点位模式、随机十进制输入、UTF-8 数据和文本规模。Bootstrap 单独验证 Compiler A → B → C → D 的编译、解码与执行，并要求 B、C、D 字节完全一致。
 
 Race Detector 可与 Fast 或 Full 组合：
 
