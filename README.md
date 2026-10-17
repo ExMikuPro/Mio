@@ -19,14 +19,14 @@
 <p align="center">
   <a href="https://github.com/ExMikuPro/Mio/actions/workflows/mio-ci-release-with-plugin.yml?query=branch%3AMio-1.0.0"><img alt="CI (Mio-1.0.0)" src="https://github.com/ExMikuPro/Mio/actions/workflows/mio-ci-release-with-plugin.yml/badge.svg?branch=Mio-1.0.0" /></a>
   <a href="https://github.com/ExMikuPro/Mio/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/ExMikuPro/Mio?include_prereleases&label=release" /></a>
-  <img alt="Project status: beta" src="https://img.shields.io/badge/status-beta-orange" />
+  <img alt="Project status: release candidate" src="https://img.shields.io/badge/status-release%20candidate-yellow" />
 </p>
 
 **Mio** 是一门正在开发的**静态强类型编程语言**，采用日语罗马音关键字，重视数学数值语义、清晰的类型规则和模块化标准库。Mio 的设计方向是用尽可能精简的语言 Core，组合按需导入的 **Bunko** 模块，支持从普通应用到数值计算的开发需求。
 
 第一代工具链以 **Mochi 字节码**为执行目标。纯 Mio 编译器已经完成 Lexer、Parser、Resolver、TypeChecker、Constant Evaluator 与 Codegen，并成功走通 A → B → C → D 连续自编译；Compiler B、C、D 字节完全一致。Mio v1 仍通过 **Go 实现的 Mochi VM** 运行编译产物。
 
-当前 `1.0.0-beta.1` 面向测试、兼容性验证与反馈收集，**不建议用于生产环境**。
+当前代码以已发布的 `1.0.0-beta.2` 为基线，正在进行 `1.0.0` 正式版发布候选验收。正式 Tag 与 GitHub Release 尚未创建，当前版本仍不应描述为已经 Stable。
 
 ## Mio 与 Mochi
 
@@ -52,7 +52,7 @@ go build -o mio ./cmd/mio
 版本命令应输出：
 
 ```text
-Mio 1.0.0-beta.1
+Mio 1.0.0-beta.2
 ```
 
 新建 `hello.mio`：
@@ -168,7 +168,7 @@ b44a55bf3f9020e6b0ff83ad137b25774814a32dfe8acaf070abcd167bfd1465
 
 单次测试记录中，A → B、B → C、C → D 各耗时约 **6 分 52 秒至 6 分 56 秒**，完整引导约 **20 分 44 秒**。这是一份未专项优化的 **Mochi VM 性能基线**，并非未来 Native AOT 的性能预测。
 
-**自举成功 ≠ 原生独立执行。** v1 的自编译器本身仍是 Mochi 字节码，运行时仍需要 Go 实现的 Mochi VM。Beta 候选仍需通过干净、可复现版本快照上的发布验收。
+**自举成功 ≠ 原生独立执行。** v1 的自编译器本身仍是 Mochi 字节码，运行时仍需要 Go 实现的 Mochi VM。`v1.0.0-beta.2` 的干净 Tag 已通过完整发布工作流；正式版仍须对最终候选提交重新执行同一套门禁。
 
 ## Mochi 字节码与 MMA
 
@@ -215,7 +215,7 @@ Bootstrap 测试采用隔离的 VM 指令预算，**不改变普通 CLI 的默�
 
 ## 编辑器支持
 
-**[Mio Language Support（JetBrains）](editors/jetbrains/README.md)**：面向 IntelliJ IDEA / GoLand 的插件。当前插件版本 0.6.0 已实现语法高亮、代码补全、Bunko 导入、跳转定义、查找引用、编译诊断、运行配置、新项目创建与 SDK 管理；具体兼容 IDE 版本和安装方式见插件文档。
+**[Mio Language Support（JetBrains）](editors/jetbrains/README.md)**：面向 IntelliJ IDEA / GoLand 的插件。当前插件版本 0.6.1 已实现语法高亮、代码补全、Bunko 导入、跳转定义、查找引用、编译诊断、运行配置、新项目创建与 SDK 管理；具体兼容 IDE 版本和安装方式见插件文档。
 
 **VS Code 与 LSP**：后续开发计划；尚不能作为已完成的开发工具能力宣传。
 
@@ -224,7 +224,7 @@ Bootstrap 测试采用隔离的 VM 指令预算，**不改变普通 CLI 的默�
 | 阶段 | 状态与目标 |
 | --- | --- |
 | Mio v1 自举核心 | **已完成**：A → B → C → D，B / C / D 字节一致 |
-| Mio v1.0.0 发布准备 | **Beta 阶段**：回归验证、兼容性测试与反馈收集 |
+| Mio v1.0.0 发布准备 | **Release Candidate 验收阶段**：以 beta.2 为基线完成回归与发布资料收尾；尚未发布 Stable |
 | Mio v2 Native AOT | **规划中**：原生机器码编译、独立 Runtime / GC、逐步移除 Mochi VM 执行依赖 |
 | 后续能力 | 在原生基础稳定后探索并行、异步、数学性能优化等能力 |
 
@@ -241,6 +241,7 @@ Bootstrap 测试采用隔离的 VM 指令预算，**不改变普通 CLI 的默�
 - [测试体系](docs/TESTING.md)
 - [诊断与 i18n](docs/I18N.md)
 - [JetBrains IDE 插件](editors/jetbrains/README.md)
+- [v1.0.0 发布候选检查清单](docs/RELEASE_CHECKLIST_V1.md)
 
 ## 许可证与角色美术
 

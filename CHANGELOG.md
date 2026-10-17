@@ -2,6 +2,35 @@
 
 本文件记录 Mio 的公开版本变化。
 
+## 1.0.0 - 待发布
+
+这是 Mio v1.0.0 正式版的发布说明草稿，不表示正式 Tag 或 GitHub Release 已经创建。
+
+### 稳定版范围
+
+- 冻结 Mio v1 已实现的源码语法、静态类型规则与 Bunko 公开 API；正式版不加入新关键字、Opcode、Native AOT 或 GC。
+- Mochi 最新写入格式保持 v14，解码与验证兼容 v1–v14。
+- 自举编译器继续以 Mochi 字节码运行于 Go 实现的 VM；自举完成不代表已有独立 Native Runtime。
+- MMA 保持 v0.2 的同步 Go 宿主接口边界；动态库 ABI、异步调用与权限沙箱不属于 v1.0.0。
+
+### 发布门禁
+
+- 最终候选提交必须通过 Fast、Full、Stress、Race、A → B → C → D Bootstrap、Bunko、MMA、SDK 与 JetBrains Plugin 验证。
+- 正式发布资产包括 Linux x64/ARM64、macOS Intel/Apple Silicon、Windows x64 SDK，JetBrains 插件 ZIP 与 `SHA256SUMS.txt`。
+- 详细状态与待办见 [`docs/RELEASE_CHECKLIST_V1.md`](docs/RELEASE_CHECKLIST_V1.md)。
+
+### 已知限制
+
+- v1 运行 Mochi 字节码仍依赖 Go 实现的 VM，不提供 Native AOT、独立 Runtime 或 GC。
+- Mochi 文件自身不含校验和或数字签名；Release 资产使用单独的 SHA-256 清单。
+- LSP、VS Code 扩展、Debugger、JIT、异步与协程不属于 v1.0.0。
+
+## 1.0.0-beta.2 - 2026-10-17
+
+- JetBrains 插件由 0.6.0 更新到 0.6.1，加入插件图标与宣传图，并同步修订安装说明。
+- Full Race 门禁不再重复执行极耗时的 `TestCodegenSelfAndBunkoSources`；该确定性 Codegen 自检仍由非 Race 的 Full / Stress 测试覆盖，自举继续由独立 A → B → C → D Job 验证。
+- Tag 对应的 Release 工作流通过 Fast、Full、Stress、Full Race、Bootstrap、插件测试与兼容性验证，并生成五个平台 SDK、插件 ZIP 和 SHA-256 清单。
+
 ## 1.0.0-beta.1 - 2026-10-17
 
 首个 v1 Beta 预发布版本，面向测试、兼容性验证与反馈收集，不建议用于生产环境。

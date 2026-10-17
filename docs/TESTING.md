@@ -1,6 +1,6 @@
 # Mio 测试
 
-Mio v1.0 Beta 使用与 Go 类似的同目录测试约定。文件名以 `_test.mio` 结尾时，它属于所在目录的同一个包，但只由 `mio test` 加载。普通 `check`、`run`、`build` 和包导入会忽略这些文件；直接对测试文件执行普通命令会提示改用 `mio test`。
+Mio v1.0 使用与 Go 类似的同目录测试约定。文件名以 `_test.mio` 结尾时，它属于所在目录的同一个包，但只由 `mio test` 加载。普通 `check`、`run`、`build` 和包导入会忽略这些文件；直接对测试文件执行普通命令会提示改用 `mio test`。
 
 ## 测试函数
 
@@ -74,5 +74,7 @@ Race Detector 可与 Fast 或 Full 组合：
 
 ```bash
 go test -race -short ./... -count=1
-go test -race ./... -count=1
+go test -race -skip='^(TestBootstrapSelfCompilation|TestCodegenSelfAndBunkoSources)$' ./... -count=1 -timeout=50m
 ```
+
+完整 Race 跳过 `TestCodegenSelfAndBunkoSources` 是为了避免在 Race Detector 下重复极耗时的自解释 Codegen 工作；该测试仍由 Full / Stress 执行。A → B → C → D 也始终由独立 Bootstrap 门禁执行，不能用上述跳过项替代。

@@ -135,7 +135,7 @@ age;
 
 // 测试版本命令
 func TestCLIVersion(t *testing.T) {
-	const want = "Mio 1.0.0-beta.1\n"
+	const want = "Mio 1.0.0-beta.2\n"
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 

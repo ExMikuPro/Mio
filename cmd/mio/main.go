@@ -23,7 +23,7 @@ import (
 	"Mio/internal/vm"
 )
 
-var version = "1.0.0-beta.1"
+var version = "1.0.0-beta.2"
 
 // main 是 Mio 命令行程序的入口
 func main() {

@@ -21,7 +21,7 @@ Mio Language Support 提供 IntelliJ IDEA 和 GoLand 的 `.mio` 文件编辑、�
 ## 功能
 
 - 将 `*.mio` 识别为 Mio 源文件，并显示 Mio 文件图标。
-- 高亮 V0.5 已启用的关键字、内置类型、布尔值、`mu`、数字、字符串、rune、注释、运算符、括号和分隔符。
+- 高亮 Mio v1 已启用的关键字、内置类型、布尔值、`mu`、数字、字符串、rune、注释、运算符、括号和分隔符。
 - 支持 `//` 行注释和 `/* ... */` 块注释，兼容 IDE 的注释快捷键。
 - 支持 `()`、`[]`、`{}` 括号匹配。
 - 提供 Mio 配色设置页，并继承 JetBrains 默认语法颜色以适配深色和浅色主题。
@@ -67,7 +67,7 @@ GitHub 安装只会在用户明确点击后执行。插件使用 IDE 代理和�
 
 当前仓库内 Mio CLI 尚不接受 `run <target>` 后的程序参数。配置中保留该字段以兼容后续 CLI；检测到当前 CLI 不支持时，插件会在运行前明确报错，不会静默丢弃参数。
 
-插件词法规则以 Mio 当前 V0.5 Lexer 为准。Mio 标识符当前仅接受 ASCII 字母、数字和下划线；Unicode 内容可用于字符串、rune 和注释。数字是十进制整数或带小数点/指数的浮点数。当前关键字包括：
+插件词法规则以 Mio v1 Lexer 为准。Mio 标识符当前仅接受 ASCII 字母、数字和下划线；Unicode 内容可用于字符串、rune 和注释。数字是十进制整数或带小数点/指数的浮点数。当前关键字包括：
 
 `kaku`、`waza`、`moshi`、`sore`、`kaesu`、`aida`、`nukeru`、`tsuzuku`、`yobu`、`kata`、`sentaku`、`awase`、`baai`、`koukai`、`teisu`、`hai`、`iie`、`mu`。
 
