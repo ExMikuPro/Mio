@@ -82,4 +82,4 @@ go test -race ./... -count=1
 
 在干净的 macOS ARM64 克隆中运行 `bash scripts/check-native-bootstrap.sh`。脚本从当前源码构建 Compiler A，用现有 Go Native AOT 工具依次原生自编译 B、C、D；检查已记录黄金 SHA256 和 B=C=D，随后真实运行 M17 黄金产物的 VM/Native 差分测试。脚本拒绝覆盖既有黄金产物，并恢复 bootstrap.config。CI 使用独立 bootstrap 作业运行它。
 
-常规 `go test ./... -timeout 30m` 会因原有期限检查跳过 `TestBootstrapSelfCompilation`，不能把该命令的通过视为完整 VM 自编译已经执行。要单独运行耗时 VM 路径，应使用 `go test ./selfhost/bootstrap -run '^TestBootstrapSelfCompilation$' -count=1 -v -timeout 60m`。本轮固定点验收使用上述既有 M16b 原生路径，不宣称 M18 纯 Mio Native AOT 已完成。
+常规 `go test ./... -timeout 30m` 会因原有期限检查跳过 `TestBootstrapSelfCompilation`，不能把该命令的通过视为完整 VM 自编译已经执行。要单独运行耗时 VM 路径，应使用 `go test ./selfhost/bootstrap -run '^TestBootstrapSelfCompilation$' -count=1 -v -timeout 60m`。本轮固定点验收使用上述既有 M16b 原生路径，M18 另由 `scripts/check-native-aot-fixed-point.py --evidence <全新目录> --gc-witness` 验收纯 Mio Native AOT；两条来源链不可混淆，见 [M18](NATIVE_AOT_M18.md)。
