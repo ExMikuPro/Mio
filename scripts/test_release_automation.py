@@ -1,6 +1,7 @@
 """Regression tests for release boundaries, using fake transport only."""
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -41,6 +42,19 @@ class PolicyTests(unittest.TestCase):
             cli.write_text('var version = "2.0.0"\n')
             with self.assertRaisesRegex(RuntimeError, 'CLI source'):
                 release.metadata('v2.1.0', root)
+
+    def test_repository_release_notes_are_tracked_and_not_ignored(self):
+        # Local-only notes can make metadata() pass while a CI checkout fails.
+        info = release.metadata('v' + (release.ROOT / 'VERSION').read_text().strip())
+        notes = info['notes']
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', notes],
+            cwd=release.ROOT, capture_output=True, text=True)
+        self.assertEqual(tracked.returncode, 0, 'release notes must be tracked: ' + notes)
+        ignored = subprocess.run(
+            ['git', 'check-ignore', '--no-index', '--quiet', '--', notes],
+            cwd=release.ROOT, capture_output=True, text=True)
+        self.assertEqual(ignored.returncode, 1, 'release notes must not be ignored: ' + notes)
 
     def test_workflow_contract(self):
         release.workflow_policy()
